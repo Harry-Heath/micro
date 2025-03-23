@@ -3,24 +3,34 @@ const microzig = @import("microzig");
 const Build = std.Build;
 const Step = Build.Step;
 
+var target: Build.ResolvedTarget = undefined;
+var optimize: std.builtin.OptimizeMode = undefined;
+var check: *Build.Step = undefined;
+
+const pc_dir: Build.Step.InstallArtifact.Options.Dir = .{
+    .override = .{
+        .custom = "pc",
+    },
+};
+
 pub fn build(b: *Build) void {
-    const target = b.standardTargetOptions(.{});
-    //const optimize = b.standardOptimizeOption(.{});
+    target = b.standardTargetOptions(.{});
+    optimize = b.standardOptimizeOption(.{});
+    check = b.step("check", "Check if it compiles");
 
-    const check = b.step("check", "Check if it compiles");
-    if (addInstallStep(b)) |step| check.dependOn(step);
-    if (addListenStep(b, target)) |step| check.dependOn(step);
-
-    addFlashStep(b);
+    addFirmwareStep(b);
+    addPcStep(b);
 }
 
-fn addInstallStep(b: *Build) ?*Step {
+/// Installs firmware
+fn addFirmwareStep(b: *Build) void {
+
+    // Build firmware
     const MicroBuild = microzig.MicroBuild(.{
         .esp = true,
     });
-
     const mz_dep = b.dependency("microzig", .{});
-    const mb = MicroBuild.init(b, mz_dep) orelse return null;
+    const mb = MicroBuild.init(b, mz_dep) orelse return;
 
     const firmware = mb.add_firmware(.{
         .name = "micro",
@@ -28,70 +38,94 @@ fn addInstallStep(b: *Build) ?*Step {
         .optimize = .ReleaseSmall,
         .root_source_file = b.path("src/firmware/main.zig"),
     });
+    check.dependOn(&firmware.artifact.step);
 
-    mb.install_firmware(firmware, .{});
-    // mb.install_firmware(firmware, .{ .format = .elf });
+    // Install firmware
+    const step = b.step("firmware", "Builds firmware");
+    const install = mb.add_install_firmware(firmware, .{});
+    step.dependOn(&install.step);
+    b.getInstallStep().dependOn(step);
 
-    return &firmware.artifact.step;
+    // Add flash step
+    addFlashStep(b, &install.step);
 }
 
-fn addListenStep(b: *Build, target: Build.ResolvedTarget) ?*Step {
-    const serial_dep = b.dependency("serial", .{});
+/// Adds the flash step
+fn addFlashStep(b: *Build, install: *Step) void {
+    const flash = b.step("flash", "Flash the firmware");
+    flash.makeFn = doFlashStep;
+    flash.dependOn(install);
+}
 
-    const listener_mod = b.createModule(.{
-        .root_source_file = b.path("src/pc/listen.zig"),
+/// Flashes the firmware onto the ESP32
+fn doFlashStep(step: *Step, _: Step.MakeOptions) !void {
+
+    // Get args
+    const args = step.owner.args orelse {
+        std.debug.print("No port given! Use: zig build flash -- {{port}}\n", .{});
+        return;
+    };
+
+    if (args.len < 1) {
+        std.debug.print("No port given! Use: zig build flash -- {{port}}\n", .{});
+        return;
+    }
+
+    var child = std.process.Child.init(&.{
+        "python",
+        "-m",
+        "esptool",
+        "--port",
+        args[0],
+        "--baud",
+        "115200",
+        "write_flash",
+        "0x0",
+        "zig-out/firmware/micro.bin",
+    }, step.owner.allocator);
+
+    try child.spawn();
+    errdefer _ = child.kill() catch {};
+    _ = try child.wait();
+}
+
+/// Builds all pc executables
+fn addPcStep(b: *Build) void {
+    const pc = b.step("pc", "Build pc stuff");
+    b.getInstallStep().dependOn(pc);
+    addListenStep(b, pc);
+}
+
+/// Builds the listen executable
+fn addListenStep(b: *Build, pc: *Step) void {
+
+    // Build listen
+    const mod = b.createModule(.{
+        .root_source_file = b.path("src/pc/listen/main.zig"),
         .target = target,
-        .optimize = .ReleaseSmall,
+        .optimize = optimize,
     });
 
-    listener_mod.addImport("serial", serial_dep.module("serial"));
+    const serial_dep = b.dependency("serial", .{});
+    mod.addImport("serial", serial_dep.module("serial"));
 
     const exe = b.addExecutable(.{
         .name = "listen",
-        .root_module = listener_mod,
+        .root_module = mod,
     });
+    check.dependOn(&exe.step);
 
-    const artifact = b.addInstallArtifact(exe, .{});
+    // Install listen
+    const artifact = b.addInstallArtifact(exe, .{
+        .dest_dir = pc_dir,
+    });
+    pc.dependOn(&artifact.step);
 
+    // Run listen
+    const run = b.addRunArtifact(exe);
+    if (b.args) |args| {
+        run.addArgs(args);
+    }
     const listen = b.step("listen", "Listens to the esp32");
-    listen.dependOn(&artifact.step);
-
-    return &exe.step;
-}
-
-fn addFlashStep(b: *Build) void {
-    const Callback = struct {
-        fn flash(step: *Step, _: Step.MakeOptions) !void {
-            const owner = step.owner;
-
-            if ((owner.args == null) or (owner.args.?.len < 1)) {
-                std.debug.print(
-                    "No port given! Use: zig build flash -- {{port}}\n",
-                    .{},
-                );
-                return;
-            }
-
-            var child = std.process.Child.init(&.{
-                "python",
-                "-m",
-                "esptool",
-                "--port",
-                owner.args.?[0],
-                "--baud",
-                "115200",
-                "write_flash",
-                "0x0",
-                "zig-out/firmware/micro.bin",
-            }, step.owner.allocator);
-
-            try child.spawn();
-            errdefer _ = child.kill() catch {};
-            _ = try child.wait();
-        }
-    };
-
-    const flash = b.step("flash", "Flash the firmware");
-    flash.makeFn = Callback.flash;
-    flash.dependOn(b.getInstallStep());
+    listen.dependOn(&run.step);
 }
