@@ -6,6 +6,7 @@ const Step = Build.Step;
 var target: Build.ResolvedTarget = undefined;
 var optimize: std.builtin.OptimizeMode = undefined;
 var check: *Build.Step = undefined;
+var serial: *Build.Module = undefined;
 
 const pc_dir: Build.Step.InstallArtifact.Options.Dir = .{
     .override = .{
@@ -17,6 +18,7 @@ pub fn build(b: *Build) void {
     target = b.standardTargetOptions(.{});
     optimize = b.standardOptimizeOption(.{});
     check = b.step("check", "Check if it compiles");
+    serial = b.dependency("serial", .{}).module("serial");
 
     addFirmwareStep(b);
     addPcStep(b);
@@ -47,7 +49,7 @@ fn addFirmwareStep(b: *Build) void {
     b.getInstallStep().dependOn(step);
 
     // Add flash step
-    addFlashStep(b, &install.step);
+    addFlashStep(b, step);
 }
 
 /// Adds the flash step
@@ -62,12 +64,18 @@ fn doFlashStep(step: *Step, _: Step.MakeOptions) !void {
 
     // Get args
     const args = step.owner.args orelse {
-        std.debug.print("No port given! Use: zig build flash -- {{port}}\n", .{});
+        std.debug.print(
+            "No port given! Use: zig build flash -- {{port}}\n",
+            .{},
+        );
         return;
     };
 
     if (args.len < 1) {
-        std.debug.print("No port given! Use: zig build flash -- {{port}}\n", .{});
+        std.debug.print(
+            "No port given! Use: zig build flash -- {{port}}\n",
+            .{},
+        );
         return;
     }
 
@@ -94,6 +102,7 @@ fn addPcStep(b: *Build) void {
     const pc = b.step("pc", "Build pc stuff");
     b.getInstallStep().dependOn(pc);
     addListenStep(b, pc);
+    addDisplay(b, pc);
 }
 
 /// Builds the listen executable
@@ -106,8 +115,7 @@ fn addListenStep(b: *Build, pc: *Step) void {
         .optimize = optimize,
     });
 
-    const serial_dep = b.dependency("serial", .{});
-    mod.addImport("serial", serial_dep.module("serial"));
+    mod.addImport("serial", serial);
 
     const exe = b.addExecutable(.{
         .name = "listen",
@@ -128,4 +136,37 @@ fn addListenStep(b: *Build, pc: *Step) void {
     }
     const listen = b.step("listen", "Listens to the esp32");
     listen.dependOn(&run.step);
+}
+
+/// Builds the display executable
+fn addDisplay(b: *Build, pc: *Step) void {
+
+    // Build display
+    const mod = b.createModule(.{
+        .root_source_file = b.path("src/pc/display/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    mod.addImport("serial", serial);
+
+    const exe = b.addExecutable(.{
+        .name = "display",
+        .root_module = mod,
+    });
+    check.dependOn(&exe.step);
+
+    // Install display
+    const artifact = b.addInstallArtifact(exe, .{
+        .dest_dir = pc_dir,
+    });
+    pc.dependOn(&artifact.step);
+
+    // Run display
+    const run = b.addRunArtifact(exe);
+    if (b.args) |args| {
+        run.addArgs(args);
+    }
+    const display = b.step("display", "Display from the esp32");
+    display.dependOn(&run.step);
 }
