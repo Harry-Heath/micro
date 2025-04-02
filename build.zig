@@ -102,7 +102,6 @@ fn addPcStep(b: *Build) void {
     const pc = b.step("pc", "Build pc stuff");
     b.getInstallStep().dependOn(pc);
     addListenStep(b, pc);
-    addDisplay(b, pc);
 }
 
 /// Builds the listen executable
@@ -136,37 +135,4 @@ fn addListenStep(b: *Build, pc: *Step) void {
     }
     const listen = b.step("listen", "Listens to the esp32");
     listen.dependOn(&run.step);
-}
-
-/// Builds the display executable
-fn addDisplay(b: *Build, pc: *Step) void {
-
-    // Build display
-    const mod = b.createModule(.{
-        .root_source_file = b.path("src/pc/display/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    mod.addImport("serial", serial);
-
-    const exe = b.addExecutable(.{
-        .name = "display",
-        .root_module = mod,
-    });
-    check.dependOn(&exe.step);
-
-    // Install display
-    const artifact = b.addInstallArtifact(exe, .{
-        .dest_dir = pc_dir,
-    });
-    pc.dependOn(&artifact.step);
-
-    // Run display
-    const run = b.addRunArtifact(exe);
-    if (b.args) |args| {
-        run.addArgs(args);
-    }
-    const display = b.step("display", "Display from the esp32");
-    display.dependOn(&run.step);
 }
