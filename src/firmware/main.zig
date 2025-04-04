@@ -39,6 +39,7 @@ pub fn main() !void {
     // watchdog.disableRtcWatchdog();
     watchdog.disableSuperWatchdog();
 
+    speedUpCpu();
     initialiseSpi();
     write(.swreset, &.{});
     write(.slpout, &.{});
@@ -50,19 +51,21 @@ pub fn main() !void {
     write(.noron, &.{});
     write(.dispon, &.{});
 
-    for (&buffer, 0..) |*pixel, i| {
-        pixel.* = @truncate(i % 255);
+    while (true) {
+        for (&buffer, 0..) |*pixel, i| {
+            pixel.* = @truncate(i % 255);
+        }
+
+        setAddressWindow(0, 0, 240, 320);
+        writeArr(&buffer);
+
+        for (&buffer, 0..) |*pixel, i| {
+            pixel.* = @truncate(i % 256);
+        }
+
+        setAddressWindow(0, 0, 240, 320);
+        writeArr(&buffer);
     }
-
-    setAddressWindow(0, 0, 240, 320);
-    writeArr(&buffer);
-
-    for (&buffer, 0..) |*pixel, i| {
-        pixel.* = @truncate(i % 256);
-    }
-
-    setAddressWindow(0, 0, 240, 320);
-    writeArr(&buffer);
 
     // var invert = false;
 
@@ -148,6 +151,18 @@ fn bytes(value: anytype) [@sizeOf(@TypeOf(value))]u8 {
 //     writeArr(&.{ 0x00, 0x00 });
 // }
 
+fn speedUpCpu() void {
+    // Set to 160MHz
+    SYSTEM.SYSCLK_CONF.modify(.{
+        .PRE_DIV_CNT = 1,
+        .SOC_CLK_SEL = 1,
+    });
+    SYSTEM.CPU_PER_CONF.modify(.{
+        .PLL_FREQ_SEL = 0,
+        .CPUPERIOD_SEL = 1,
+    });
+}
+
 fn initialiseSpi() void {
     // Set all pins to use FSPI rather than GPIO
     const spi_pins = [_]usize{ 2, 6, 7, 10 };
@@ -174,13 +189,6 @@ fn initialiseSpi() void {
         .MST_CLK_ACTIVE = 1,
         .MST_CLK_SEL = 1,
     });
-
-    // SPI2.CLOCK.modify(.{
-    //     .CLKCNT_N = 0,
-    //     .CLKCNT_L = 0,
-    //     .CLKCNT_H = 0,
-    //     .CLKDIV_PRE = 0,
-    // });
 }
 
 fn write(cmd: ST7789.Command, params: []const u8) void {
@@ -214,26 +222,30 @@ fn writeArr(arr: []const u8) void {
 
     var arr_index: u16 = 0;
     var buf_index: u5 = 0;
-    var byte_index: u5 = 0;
+    var byte_offset: u5 = 0;
     while (arr_index < arr.len) {
 
         // Write byte
         const value: u32 = arr[arr_index];
-        buffers[buf_index].* |= value << (byte_index * 8);
+        buffers[buf_index].* |= value << (byte_offset * 8);
 
+        // Increment byte
         arr_index += 1;
+        byte_offset += 1;
 
-        byte_index += 1;
-        if (byte_index >= 4) {
+        // Go to next buffer if we've reached the end of the current one
+        if (byte_offset >= 4) {
             buf_index += 1;
-            byte_index = 0;
+            byte_offset = 0;
         }
 
+        // If we've run out of buffer or reached the end of the array, send it
         if (buf_index >= 16 or arr_index >= arr.len) {
+
             // Message length
             SPI2.MS_DLEN.modify(.{
                 .MS_DATA_BITLEN = (@as(u9, @intCast(buf_index)) * 32) +
-                    (8 * @as(u9, @intCast(byte_index))) - 1,
+                    (8 * @as(u9, @intCast(byte_offset))) - 1,
             });
 
             // Sync registers
@@ -244,6 +256,7 @@ fn writeArr(arr: []const u8) void {
             SPI2.CMD.modify(.{ .USR = 1 });
             while (SPI2.CMD.read().USR == 1) {}
 
+            // Go back to initial buffer
             buf_index = 0;
         }
     }
