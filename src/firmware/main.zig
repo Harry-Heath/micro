@@ -20,57 +20,49 @@ const output_pin_config = gpio.Pin.Config{
     .output_enable = true,
 };
 
-// const cs_pin = gpio.instance.GPIO10;
-// const mosi_pin = gpio.instance.GPIO7;
-// const clk_pin = gpio.instance.GPIO6;
-const dc_pin = gpio.instance.GPIO4;
-const rst_pin = gpio.instance.GPIO5;
+const dc_pin = gpio.instance.GPIO0;
+const rst_pin = gpio.instance.GPIO3;
 const bl_pin = gpio.instance.GPIO1;
 
 pub fn main() !void {
-    //var buffer: [240 * 320 * 2]u8 = undefined;
+    var buffer: [240 * 320 * 2]u8 = undefined;
 
     // Setup pins
-    // cs_pin.apply(output_pin_config);
-    // mosi_pin.apply(output_pin_config);
-    // clk_pin.apply(output_pin_config);
     dc_pin.apply(output_pin_config);
     rst_pin.apply(output_pin_config);
     bl_pin.apply(output_pin_config);
 
-    // cs_pin.write(.low);
-    // clk_pin.write(.low);
     bl_pin.write(.high);
     rst_pin.write(.high);
 
     watchdog.disableWatchdog();
-    //watchdog.disableRtcWatchdog();
+    // watchdog.disableRtcWatchdog();
     watchdog.disableSuperWatchdog();
 
     initialiseSpi();
-    while (true) {
-        writeSpi(.swreset, &.{});
-        writeSpi(.slpout, &.{});
-        writeSpi(.colmod, &.{0x55});
-        writeSpi(.madctl, &.{0x08});
-        //write(.caset, &.{ 0x00, 0, 0, 240 });
-        //write(.raset, &.{ 0x00, 0, 320 >> 8, 320 & 0xFF });
-        writeSpi(.invon, &.{});
-        writeSpi(.noron, &.{});
-        writeSpi(.dispon, &.{});
-        // uart.write(0, "!");
-        // microzig.core.experimental.debug.busy_sleep(200_000);
+    write(.swreset, &.{});
+    write(.slpout, &.{});
+    write(.colmod, &.{0x55});
+    write(.madctl, &.{0x08});
+    write(.caset, &.{ 0x00, 0, 0, 240 });
+    write(.raset, &.{ 0x00, 0, 320 >> 8, 320 & 0xFF });
+    write(.invon, &.{});
+    write(.noron, &.{});
+    write(.dispon, &.{});
+
+    for (&buffer, 0..) |*pixel, i| {
+        pixel.* = @truncate(i % 255);
     }
 
-    // setAddressWindow(0, 0, 240, 320);
-    // writeArr(&buffer);
+    setAddressWindow(0, 0, 240, 320);
+    writeArr(&buffer);
 
-    // for (&buffer, 0..) |*pixel, i| {
-    //     pixel.* = @truncate(i % 256);
-    // }
+    for (&buffer, 0..) |*pixel, i| {
+        pixel.* = @truncate(i % 256);
+    }
 
-    // setAddressWindow(0, 0, 240, 320);
-    // writeArr(&buffer);
+    setAddressWindow(0, 0, 240, 320);
+    writeArr(&buffer);
 
     // var invert = false;
 
@@ -127,14 +119,14 @@ pub fn main() !void {
 
 const builtin = @import("builtin");
 
-// fn setAddressWindow(x: u16, y: u16, w: u16, h: u16) void {
-//     const xa = (@as(u32, x) << 16) | (x + w - 1);
-//     const ya = (@as(u32, y) << 16) | (y + h - 1);
+fn setAddressWindow(x: u16, y: u16, w: u16, h: u16) void {
+    const xa = (@as(u32, x) << 16) | (x + w - 1);
+    const ya = (@as(u32, y) << 16) | (y + h - 1);
 
-//     write(.caset, &bytes(xa));
-//     write(.raset, &bytes(ya));
-//     write(.ramwr, &.{});
-// }
+    write(.caset, &bytes(xa));
+    write(.raset, &bytes(ya));
+    write(.ramwr, &.{});
+}
 
 fn bytes(value: anytype) [@sizeOf(@TypeOf(value))]u8 {
     const byte_f = std.mem.asBytes(&value);
@@ -157,25 +149,15 @@ fn bytes(value: anytype) [@sizeOf(@TypeOf(value))]u8 {
 // }
 
 fn initialiseSpi() void {
-    // // Set all pins to use FSPI rather than GPIO
-    // const spi_pins = [_]usize{ 2, 6, 7, 10 };
-    // for (spi_pins) |spi_pin| {
-    //     IO_MUX.GPIO[spi_pin].modify(.{
-    //         .MCU_SEL = 2,
-    //     });
-    // }
+    // Set all pins to use FSPI rather than GPIO
+    const spi_pins = [_]usize{ 2, 6, 7, 10 };
+    for (spi_pins) |spi_pin| {
+        IO_MUX.GPIO[spi_pin].modify(.{
+            .MCU_SEL = 2,
+        });
+    }
 
-    GPIO.FUNC_OUT_SEL_CFG[10].modify(.{ .OUT_SEL = 68 });
-    GPIO.FUNC_OUT_SEL_CFG[2].modify(.{ .OUT_SEL = 64 });
-    GPIO.FUNC_OUT_SEL_CFG[7].modify(.{ .OUT_SEL = 65 });
-    GPIO.FUNC_OUT_SEL_CFG[6].modify(.{ .OUT_SEL = 63 });
-
-    GPIO.ENABLE_W1TC.write(.{ .ENABLE_W1TC = @as(u26, 1) << 10, .padding = 0 });
-    GPIO.ENABLE_W1TC.write(.{ .ENABLE_W1TC = @as(u26, 1) << 2, .padding = 0 });
-    GPIO.ENABLE_W1TC.write(.{ .ENABLE_W1TC = @as(u26, 1) << 7, .padding = 0 });
-    GPIO.ENABLE_W1TC.write(.{ .ENABLE_W1TC = @as(u26, 1) << 6, .padding = 0 });
-
-    // Enable full duplex
+    // Enable half duplex
     SPI2.USER.modify(.{
         .DOUTDIN = 1,
         .USR_MOSI = 1,
@@ -193,47 +175,76 @@ fn initialiseSpi() void {
         .MST_CLK_SEL = 1,
     });
 
-    SYSTEM.PERIP_CLK_EN0.modify(.{
-        .SPI2_CLK_EN = 1,
-    });
-
-    SYSTEM.PERIP_RST_EN0.modify(.{
-        .SPI2_RST = 0,
-    });
+    // SPI2.CLOCK.modify(.{
+    //     .CLKCNT_N = 0,
+    //     .CLKCNT_L = 0,
+    //     .CLKCNT_H = 0,
+    //     .CLKDIV_PRE = 0,
+    // });
 }
 
-fn writeSpi(cmd: ST7789.Command, params: []const u8) void {
+fn write(cmd: ST7789.Command, params: []const u8) void {
     dc_pin.write(.low);
-    writeArrSpi(&.{@intFromEnum(cmd)});
+    writeArr(&.{@intFromEnum(cmd)});
     dc_pin.write(.high);
-    writeArrSpi(params);
+    writeArr(params);
 }
 
-fn writeArrSpi(arr: []const u8) void {
+fn writeArr(arr: []const u8) void {
     if (arr.len == 0) return;
 
-    // TODO: one byte
-    SPI2.MS_DLEN.modify(.{
-        .MS_DATA_BITLEN = 7,
-    });
+    const buffers = [_]*volatile u32{
+        &SPI2.W0.raw,
+        &SPI2.W1.raw,
+        &SPI2.W2.raw,
+        &SPI2.W3.raw,
+        &SPI2.W4.raw,
+        &SPI2.W5.raw,
+        &SPI2.W6.raw,
+        &SPI2.W7.raw,
+        &SPI2.W8.raw,
+        &SPI2.W9.raw,
+        &SPI2.W10.raw,
+        &SPI2.W11.raw,
+        &SPI2.W12.raw,
+        &SPI2.W13.raw,
+        &SPI2.W14.raw,
+        &SPI2.W15.raw,
+    };
 
-    // Set data
-    SPI2.W0.modify(.{
-        .BUF0 = @as(u32, arr[0]),
-    });
+    var arr_index: u16 = 0;
+    var buf_index: u5 = 0;
+    var byte_index: u5 = 0;
+    while (arr_index < arr.len) {
 
-    SPI2.DMA_CONF.modify(.{
-        .RX_AFIFO_RST = 1,
-        .BUF_AFIFO_RST = 1,
-        .DMA_AFIFO_RST = 1,
-    });
+        // Write byte
+        const value: u32 = arr[arr_index];
+        buffers[buf_index].* |= value << (byte_index * 8);
 
-    SPI2.CMD.modify(.{
-        .USR = 1,
-    });
+        arr_index += 1;
 
-    // Wait for SPI transfer to complete
-    while (SPI2.CMD.read().USR == 1) {}
+        byte_index += 1;
+        if (byte_index >= 4) {
+            buf_index += 1;
+            byte_index = 0;
+        }
 
-    uart.write(0, "?");
+        if (buf_index >= 16 or arr_index >= arr.len) {
+            // Message length
+            SPI2.MS_DLEN.modify(.{
+                .MS_DATA_BITLEN = (@as(u9, @intCast(buf_index)) * 32) +
+                    (8 * @as(u9, @intCast(byte_index))) - 1,
+            });
+
+            // Sync registers
+            SPI2.CMD.modify(.{ .UPDATE = 1 });
+            while (SPI2.CMD.read().UPDATE == 1) {}
+
+            // Start and wait for transfer to complete
+            SPI2.CMD.modify(.{ .USR = 1 });
+            while (SPI2.CMD.read().USR == 1) {}
+
+            buf_index = 0;
+        }
+    }
 }

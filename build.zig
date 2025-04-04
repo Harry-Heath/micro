@@ -37,7 +37,7 @@ fn addFirmwareStep(b: *Build) void {
     const firmware = mb.add_firmware(.{
         .name = "micro",
         .target = mb.ports.esp.chips.esp32_c3,
-        .optimize = .ReleaseSmall,
+        .optimize = .ReleaseFast,
         .root_source_file = b.path("src/firmware/main.zig"),
     });
     check.dependOn(&firmware.artifact.step);
