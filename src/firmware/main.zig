@@ -11,10 +11,31 @@ const GPIO = peripherals.GPIO;
 const IO_MUX = peripherals.IO_MUX;
 const SPI2 = peripherals.SPI2;
 const SYSTEM = peripherals.SYSTEM;
+const DMA = peripherals.DMA;
 
-const display_drivers = @import("display.zig");
-const ST7789 = display_drivers.ST7789;
-const Color = display_drivers.Color;
+const Color = struct {
+    value: u16 = 0,
+
+    fn set(r: u8, g: u8, b: u8) Color {
+        var color: Color = .{};
+
+        // r: 0b0000_0000_1111_1000;
+        color.value |= @as(u16, r >> 3) << 3;
+
+        // g: 0b1110_0000_0000_0111;
+        color.value |= @as(u16, g >> 2);
+        color.value |= @as(u16, g >> 0) << 13;
+
+        // b: 0b0001_1111_0000_0000;
+        color.value |= @as(u16, b >> 3) << 8;
+
+        return color;
+    }
+
+    pub const red: Color = .set(255, 0, 0);
+    pub const green: Color = .set(0, 255, 0);
+    pub const blue: Color = .set(0, 0, 255);
+};
 
 const output_pin_config = gpio.Pin.Config{
     .output_enable = true,
@@ -25,7 +46,13 @@ const rst_pin = gpio.instance.GPIO3;
 const bl_pin = gpio.instance.GPIO1;
 
 pub fn main() !void {
-    var buffer: [240 * 320 * 2]u8 = undefined;
+    var display: [240 * 320]Color = undefined;
+    const buffer = std.mem.asBytes(&display);
+    var descriptors: [75]DmaDescriptor = undefined;
+
+    for (&display) |*pixel| {
+        pixel.* = .set(0, 0, 0);
+    }
 
     // Setup pins
     dc_pin.apply(output_pin_config);
@@ -36,35 +63,34 @@ pub fn main() !void {
     rst_pin.write(.high);
 
     watchdog.disableWatchdog();
-    // watchdog.disableRtcWatchdog();
+    //watchdog.disableRtcWatchdog();
     watchdog.disableSuperWatchdog();
 
     speedUpCpu();
+    setupDescriptors(&descriptors, buffer);
+
+    initialiseDma();
     initialiseSpi();
-    write(.swreset, &.{});
-    write(.slpout, &.{});
-    write(.colmod, &.{0x55});
-    write(.madctl, &.{0x08});
-    write(.caset, &.{ 0x00, 0, 0, 240 });
-    write(.raset, &.{ 0x00, 0, 320 >> 8, 320 & 0xFF });
-    write(.invon, &.{});
-    write(.noron, &.{});
-    write(.dispon, &.{});
+
+    writeCommand(.swreset, &.{});
+    writeCommand(.slpout, &.{});
+    writeCommand(.colmod, &.{0x55});
+    writeCommand(.madctl, &.{0x00});
+    writeCommand(.caset, &.{ 0x00, 0, 0, 240 });
+    writeCommand(.raset, &.{ 0x00, 0, 320 >> 8, 320 & 0xFF });
+    writeCommand(.invon, &.{});
+    writeCommand(.noron, &.{});
+    writeCommand(.dispon, &.{});
+    writeCommand(.frctrl2, &.{0x0f});
 
     while (true) {
-        for (&buffer, 0..) |*pixel, i| {
-            pixel.* = @truncate(i % 255);
+        for ([_]Color{ .red, .green, .blue }) |c| {
+            for (&display) |*pixel| {
+                pixel.* = c;
+            }
+            writeDisplay(&descriptors);
+            microzig.core.experimental.debug.busy_sleep(1_000_000);
         }
-
-        setAddressWindow(0, 0, 240, 320);
-        writeArr(&buffer);
-
-        for (&buffer, 0..) |*pixel, i| {
-            pixel.* = @truncate(i % 256);
-        }
-
-        setAddressWindow(0, 0, 240, 320);
-        writeArr(&buffer);
     }
 
     // var invert = false;
@@ -120,18 +146,17 @@ pub fn main() !void {
 //     cs_pin.write(.high);
 // }
 
-const builtin = @import("builtin");
-
 fn setAddressWindow(x: u16, y: u16, w: u16, h: u16) void {
     const xa = (@as(u32, x) << 16) | (x + w - 1);
     const ya = (@as(u32, y) << 16) | (y + h - 1);
 
-    write(.caset, &bytes(xa));
-    write(.raset, &bytes(ya));
-    write(.ramwr, &.{});
+    writeCommand(.caset, &bytesBigEndian(xa));
+    writeCommand(.raset, &bytesBigEndian(ya));
+    writeCommand(.ramwr, &.{});
 }
 
-fn bytes(value: anytype) [@sizeOf(@TypeOf(value))]u8 {
+fn bytesBigEndian(value: anytype) [@sizeOf(@TypeOf(value))]u8 {
+    const builtin = @import("builtin");
     const byte_f = std.mem.asBytes(&value);
     if (builtin.cpu.arch.endian() == .big) {
         return byte_f.*;
@@ -144,12 +169,6 @@ fn bytes(value: anytype) [@sizeOf(@TypeOf(value))]u8 {
         return arr;
     }
 }
-
-// fn setPixel(x: u16, y: u16, c: display_drivers.Color) void {
-//     setAddressWindow(x, y, 1, 1);
-//     _ = c;
-//     writeArr(&.{ 0x00, 0x00 });
-// }
 
 fn speedUpCpu() void {
     // Set to 160MHz
@@ -184,6 +203,11 @@ fn initialiseSpi() void {
         .MODE = 0,
     });
 
+    // Fast clock
+    SPI2.CLOCK.modify(.{
+        .CLK_EQU_SYSCLK = 1,
+    });
+
     // Enable clock
     SPI2.CLK_GATE.modify(.{
         .MST_CLK_ACTIVE = 1,
@@ -191,15 +215,20 @@ fn initialiseSpi() void {
     });
 }
 
-fn write(cmd: ST7789.Command, params: []const u8) void {
+fn writeCommand(cmd: Command, params: []const u8) void {
     dc_pin.write(.low);
-    writeArr(&.{@intFromEnum(cmd)});
+    writeArray(&.{@intFromEnum(cmd)});
     dc_pin.write(.high);
-    writeArr(params);
+    writeArray(params);
 }
 
-fn writeArr(arr: []const u8) void {
+fn writeArray(arr: []const u8) void {
     if (arr.len == 0) return;
+
+    // Disable DMA out
+    SPI2.DMA_CONF.modify(.{
+        .DMA_TX_ENA = 0,
+    });
 
     const buffers = [_]*volatile u32{
         &SPI2.W0.raw,
@@ -244,8 +273,8 @@ fn writeArr(arr: []const u8) void {
 
             // Message length
             SPI2.MS_DLEN.modify(.{
-                .MS_DATA_BITLEN = (@as(u9, @intCast(buf_index)) * 32) +
-                    (8 * @as(u9, @intCast(byte_offset))) - 1,
+                .MS_DATA_BITLEN = (@as(u18, @intCast(buf_index)) * 32) +
+                    (8 * @as(u18, @intCast(byte_offset))) - 1,
             });
 
             // Sync registers
@@ -261,3 +290,141 @@ fn writeArr(arr: []const u8) void {
         }
     }
 }
+
+fn initialiseDma() void {
+    // Enable DMA peripheral
+    SYSTEM.PERIP_CLK_EN1.modify(.{
+        .DMA_CLK_EN = 1,
+    });
+
+    // Reset DMA peripheral
+    SYSTEM.PERIP_RST_EN1.modify(.{
+        .DMA_RST = 0,
+    });
+
+    // Set output to SPI2
+    DMA.OUT_PERI_SEL_CH0.modify(.{
+        .PERI_OUT_SEL_CH0 = 0,
+    });
+}
+
+const DmaHeader = packed struct {
+    size: u12,
+    length: u12,
+    reserved0: u4 = undefined,
+    err_eof: u1 = 0,
+    reserved1: u1 = undefined,
+    suc_eof: u1 = 0,
+    owner: u1 = undefined,
+};
+
+const DmaDescriptor = packed struct {
+    header: DmaHeader,
+    buffer_address: u32,
+    next_address: u32,
+};
+
+fn setupDescriptors(descriptors: []DmaDescriptor, buffer: []u8) void {
+    for (descriptors, 0..) |*descriptor, i| {
+        const eof = (i % 16) == 15 or i == 74;
+        const next_address = if (eof) 0 else @intFromPtr(&descriptors[i + 1]);
+        descriptor.* = .{
+            .header = .{
+                .size = 2048,
+                .length = 2048,
+            },
+            .buffer_address = @intFromPtr(&buffer[i * 2048]),
+            .next_address = next_address,
+        };
+    }
+}
+
+fn writeDisplay(descriptors: []DmaDescriptor) void {
+    setAddressWindow(0, 0, 240, 320);
+    dc_pin.write(.high);
+
+    // Enable DMA out
+    SPI2.DMA_CONF.modify(.{
+        .DMA_TX_ENA = 1,
+    });
+
+    // Frame size = 240 * 360 * 2 = 153600 bytes
+    // DMA buffer size = 2048 bytes
+    // Number of DMA buffers = 153600 / 2048 = 75
+    // Max submit size = 32768 bytes
+    // Number of buffers per submit = 37678 / 2048 = 16
+
+    // So we can do 16 dma buffers per submit
+    // We have 75 buffers total
+    // So we need to submit 5 times
+    // 4 * 32768 bytes (16 buffers), 1 * 22528 (11 buffers)
+
+    inline for (0..5) |run| {
+        const byte_len = if (run != 4) 32768 else 22528;
+        const bit_len: u18 = (byte_len * 8) - 1;
+
+        SPI2.MS_DLEN.modify(.{
+            .MS_DATA_BITLEN = bit_len,
+        });
+
+        const desc_index = run * 16;
+        const desc_addr: u20 = @truncate(@intFromPtr(&descriptors[desc_index]));
+
+        DMA.OUT_LINK_CH0.modify(.{
+            .OUTLINK_ADDR_CH0 = desc_addr,
+        });
+
+        DMA.OUT_LINK_CH0.modify(.{
+            .OUTLINK_START_CH0 = 1,
+        });
+
+        SPI2.DMA_CONF.modify(.{
+            .RX_AFIFO_RST = 1,
+            .BUF_AFIFO_RST = 1,
+            .DMA_AFIFO_RST = 1,
+        });
+
+        // Sync registers
+        SPI2.CMD.modify(.{ .UPDATE = 1 });
+        while (SPI2.CMD.read().UPDATE == 1) {}
+
+        // Start and wait for transfer to complete
+        SPI2.CMD.modify(.{ .USR = 1 });
+        while (SPI2.CMD.read().USR == 1) {}
+    }
+}
+
+const Command = enum(u8) {
+    nop = 0x00,
+    swreset = 0x01,
+    rddid = 0x04,
+    rddst = 0x09,
+
+    slpin = 0x10,
+    slpout = 0x11,
+    ptlon = 0x12,
+    noron = 0x13,
+
+    invoff = 0x20,
+    invon = 0x21,
+    dispoff = 0x28,
+    dispon = 0x29,
+    caset = 0x2A,
+    raset = 0x2B,
+    ramwr = 0x2C,
+    ramrd = 0x2E,
+
+    ptlar = 0x30,
+    teoff = 0x34,
+    teon = 0x35,
+    madctl = 0x36,
+    colmod = 0x3A,
+
+    rdid1 = 0xDA,
+    rdid2 = 0xDB,
+    rdid3 = 0xDC,
+    rdid4 = 0xDD,
+
+    ste = 0x44,
+    frctrl2 = 0xC6,
+};
