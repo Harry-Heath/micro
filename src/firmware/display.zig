@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const microzig = @import("microzig");
 
 const peripherals = microzig.chip.peripherals;
@@ -20,8 +21,9 @@ const Self = @This();
 
 pub const width = 320;
 pub const height = 240;
+pub const colors = 8;
 
-pixels: [320 * 240]Color = undefined,
+pixels: [width * height]Color = undefined,
 descriptors: [75]DmaDescriptor = undefined,
 
 pub const Color = struct {
@@ -52,7 +54,7 @@ pub const Color = struct {
     pub const red: Color = .rgb(240, 43, 0);
     pub const pink: Color = .rgb(255, 46, 193);
 
-    pub const pallete = [8]Color{
+    pub const pallete = [colors]Color{
         .black,
         .white,
         .yellow,
@@ -115,16 +117,13 @@ const DmaDescriptor = packed struct {
     next_address: u32,
 };
 
-pub fn init() Self {
+pub fn init(self: *Self) void {
     dc_pin.apply(output_pin_config);
     rst_pin.apply(output_pin_config);
     bl_pin.apply(output_pin_config);
 
     bl_pin.write(.high);
     rst_pin.write(.high);
-
-    var self: Self = .{};
-    self.setupDescriptors();
 
     initialiseDma();
     initialiseSpi();
@@ -140,39 +139,20 @@ pub fn init() Self {
     writeCommand(.dispon, &.{});
     writeCommand(.frctrl2, &.{0x0f});
 
-    return self;
+    for (&self.pixels) |*pixel| {
+        pixel.* = .black;
+    }
+
+    self.setupDescriptors();
+    self.update();
 }
 
-pub fn setPixel(self: *Self, x: u16, y: u16, c: u3) void {
-    self.pixels[@as(u32, x) * 240 + @as(u32, y)] = Color.pallete[c];
+pub fn setPixel(self: *Self, x: usize, y: usize, c: usize) void {
+    self.pixels[x * 240 + y] = Color.pallete[c % colors];
 }
 
 pub fn update(self: *Self) void {
     self.writeDisplay();
-}
-
-fn setAddressWindow(x: u16, y: u16, w: u16, h: u16) void {
-    const xa = (@as(u32, x) << 16) | (x + w - 1);
-    const ya = (@as(u32, y) << 16) | (y + h - 1);
-
-    writeCommand(.caset, &getBytesBigEndian(xa));
-    writeCommand(.raset, &getBytesBigEndian(ya));
-    writeCommand(.ramwr, &.{});
-}
-
-fn getBytesBigEndian(value: anytype) [@sizeOf(@TypeOf(value))]u8 {
-    const builtin = @import("builtin");
-    const byte_f = std.mem.asBytes(&value);
-    if (builtin.cpu.arch.endian() == .big) {
-        return byte_f.*;
-    } else {
-        const size = @sizeOf(@TypeOf(value));
-        var arr: [size]u8 = undefined;
-        for (0..size) |i| {
-            arr[i] = byte_f[size - i - 1];
-        }
-        return arr;
-    }
 }
 
 fn initialiseSpi() void {
@@ -223,23 +203,6 @@ fn initialiseDma() void {
     DMA.OUT_PERI_SEL_CH0.modify(.{
         .PERI_OUT_SEL_CH0 = 0,
     });
-}
-
-fn setupDescriptors(self: *Self) void {
-    const descriptors = &self.descriptors;
-    const buffer = std.mem.asBytes(&self.pixels);
-    for (descriptors, 0..) |*descriptor, i| {
-        const eof = (i % 16) == 15 or i == 74;
-        const next_address = if (eof) 0 else @intFromPtr(&descriptors[i + 1]);
-        descriptor.* = .{
-            .header = .{
-                .size = 2048,
-                .length = 2048,
-            },
-            .buffer_address = @intFromPtr(&buffer[i * 2048]),
-            .next_address = next_address,
-        };
-    }
 }
 
 fn writeCommand(cmd: Command, params: []const u8) void {
@@ -318,27 +281,67 @@ fn writeArray(arr: []const u8) void {
     }
 }
 
+fn writeAddressWindow(x: u16, y: u16, w: u16, h: u16) void {
+    const xa = (@as(u32, x) << 16) | (x + w - 1);
+    const ya = (@as(u32, y) << 16) | (y + h - 1);
+
+    writeCommand(.caset, &getBytesBigEndian(xa));
+    writeCommand(.raset, &getBytesBigEndian(ya));
+    writeCommand(.ramwr, &.{});
+}
+
+fn getBytesBigEndian(value: anytype) [@sizeOf(@TypeOf(value))]u8 {
+    const bytes = std.mem.asBytes(&value);
+    if (builtin.cpu.arch.endian() == .big) {
+        return bytes.*;
+    } else {
+        const size = @sizeOf(@TypeOf(value));
+        var reversed: [size]u8 = undefined;
+        for (0..size) |i| {
+            reversed[i] = bytes[size - i - 1];
+        }
+        return reversed;
+    }
+}
+
+// Frame size = 240 * 360 * 2 = 153600 bytes
+// DMA buffer size = 2048 bytes
+// Number of DMA buffers = 153600 / 2048 = 75
+// Max submit size = 32768 bytes
+// Number of buffers per submit = 37678 / 2048 = 16
+
+// So we can do 16 dma buffers per submit
+// We have 75 buffers total
+// So we need to submit 5 times
+// 4 * 32768 bytes (16 buffers), 1 * 22528 (11 buffers)
+
+fn setupDescriptors(self: *Self) void {
+    const descriptors = &self.descriptors;
+    const buffer = std.mem.asBytes(&self.pixels);
+    for (descriptors, 0..) |*descriptor, i| {
+        const eof = (i % 16) == 15 or i == 74;
+        const next_address = if (eof) 0 else @intFromPtr(&descriptors[i + 1]);
+        descriptor.* = .{
+            .header = .{
+                .size = 2048,
+                .length = 2048,
+            },
+            .buffer_address = @intFromPtr(&buffer[i * 2048]),
+            .next_address = next_address,
+        };
+    }
+}
+
 fn writeDisplay(self: *Self) void {
     const descriptors = &self.descriptors;
 
-    setAddressWindow(0, 0, 240, 320);
+    writeAddressWindow(0, 0, 240, 320);
     dc_pin.write(.high);
 
     // Enable DMA out
     SPI2.DMA_CONF.modify(.{
         .DMA_TX_ENA = 1,
     });
-
-    // Frame size = 240 * 360 * 2 = 153600 bytes
-    // DMA buffer size = 2048 bytes
-    // Number of DMA buffers = 153600 / 2048 = 75
-    // Max submit size = 32768 bytes
-    // Number of buffers per submit = 37678 / 2048 = 16
-
-    // So we can do 16 dma buffers per submit
-    // We have 75 buffers total
-    // So we need to submit 5 times
-    // 4 * 32768 bytes (16 buffers), 1 * 22528 (11 buffers)
 
     inline for (0..5) |run| {
         const byte_len = if (run != 4) 32768 else 22528;
