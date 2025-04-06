@@ -1,7 +1,6 @@
 
-`zig build`
-`zig build listen`
-`zig build flash -- {port}`
+`zig build firmware`
+`zig build pc`
 
-Then use serial to read print statments, using baud rate 115200  
-i.e. using PuTTy
+`zig build flash -- {port}`
+`zig build listen -- {port}`
