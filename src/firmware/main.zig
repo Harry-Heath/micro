@@ -44,21 +44,11 @@ pub fn main() !void {
     watchdog.disableRtcWatchdog();
     watchdog.disableSuperWatchdog();
 
-    var buffer: [1 << 18]u8 = undefined; // 262 KB heap
-    var stack = std.heap.FixedBufferAllocator.init(&buffer);
-    const allocator = stack.allocator();
+    var display: Display = .{};
+    display.init();
 
-    var display = Display.init(allocator) catch {
-        uart.write(0, "Could not allocate display.\n");
-        return;
-    };
-
-    const audio = Audio.init(allocator) catch {
-        uart.write(0, "Could not allocate audio.\n");
-        return;
-    };
-
-    _ = audio;
+    var audio: Audio = .{};
+    audio.init();
 
     var i: u32 = 0;
     while (true) {

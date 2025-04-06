@@ -24,8 +24,8 @@ pub const colors = 8;
 
 const Self = @This();
 
-pixels: [width * height]Color,
-descriptors: [75]DmaDescriptor,
+pixels: [width * height]Color = undefined,
+descriptors: [75]DmaDescriptor = undefined,
 
 pub const Sprite = struct {
     width: u16,
@@ -129,7 +129,7 @@ const DmaDescriptor = packed struct {
     next_address: u32,
 };
 
-pub fn init(allocator: std.mem.Allocator) !*Self {
+pub fn init(self: *Self) void {
     dc_pin.apply(output_pin_config);
     rst_pin.apply(output_pin_config);
     bl_pin.apply(output_pin_config);
@@ -151,16 +151,12 @@ pub fn init(allocator: std.mem.Allocator) !*Self {
     writeCommand(.dispon, &.{});
     writeCommand(.frctrl2, &.{0x0f});
 
-    const self = try allocator.create(Self);
-
     // Initialise display
     for (&self.pixels) |*pixel| {
         pixel.* = .black;
     }
     self.setupDescriptors();
     self.writeDisplay();
-
-    return self;
 }
 
 pub fn setPixel(self: *Self, x: usize, y: usize, c: usize) void {
