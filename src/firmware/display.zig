@@ -4,6 +4,7 @@ const microzig = @import("microzig");
 
 const peripherals = microzig.chip.peripherals;
 const gpio = microzig.hal.gpio;
+
 const IO_MUX = peripherals.IO_MUX;
 const SPI2 = peripherals.SPI2;
 const SYSTEM = peripherals.SYSTEM;
@@ -17,14 +18,25 @@ const output_pin_config = gpio.Pin.Config{
     .output_enable = true,
 };
 
-const Self = @This();
-
 pub const width = 320;
 pub const height = 240;
 pub const colors = 8;
 
-pixels: [width * height]Color = undefined,
-descriptors: [75]DmaDescriptor = undefined,
+const Self = @This();
+
+pixels: [width * height]Color,
+descriptors: [75]DmaDescriptor,
+
+pub const Sprite = struct {
+    width: u16,
+    height: u16,
+    pixels: []const u3,
+
+    pub fn getPixel(self: Sprite, x: usize, y: usize) u3 {
+        if (x >= self.width or y >= self.height) return 0;
+        return self.pixels[x * self.height + y];
+    }
+};
 
 pub const Color = struct {
     value: u16 = 0,
@@ -54,7 +66,7 @@ pub const Color = struct {
     pub const red: Color = .rgb(240, 43, 0);
     pub const pink: Color = .rgb(255, 46, 193);
 
-    pub const pallete = [colors]Color{
+    pub const palette = [colors]Color{
         .black,
         .white,
         .yellow,
@@ -117,7 +129,7 @@ const DmaDescriptor = packed struct {
     next_address: u32,
 };
 
-pub fn init(self: *Self) void {
+pub fn init(allocator: std.mem.Allocator) !*Self {
     dc_pin.apply(output_pin_config);
     rst_pin.apply(output_pin_config);
     bl_pin.apply(output_pin_config);
@@ -139,16 +151,29 @@ pub fn init(self: *Self) void {
     writeCommand(.dispon, &.{});
     writeCommand(.frctrl2, &.{0x0f});
 
+    const self = try allocator.create(Self);
+
+    // Initialise display
     for (&self.pixels) |*pixel| {
         pixel.* = .black;
     }
-
     self.setupDescriptors();
-    self.update();
+    self.writeDisplay();
+
+    return self;
 }
 
 pub fn setPixel(self: *Self, x: usize, y: usize, c: usize) void {
-    self.pixels[x * 240 + y] = Color.pallete[c % colors];
+    if (x >= width or y >= height) return;
+    self.pixels[x * height + y] = Color.palette[c % colors];
+}
+
+pub fn drawSprite(self: *Self, sprite: Sprite, tx: usize, ty: usize) void {
+    for (0..sprite.width) |px| {
+        for (0..sprite.height) |py| {
+            self.setPixel(tx + px, ty + py, sprite.getPixel(px, py));
+        }
+    }
 }
 
 pub fn update(self: *Self) void {
@@ -335,7 +360,7 @@ fn setupDescriptors(self: *Self) void {
 fn writeDisplay(self: *Self) void {
     const descriptors = &self.descriptors;
 
-    writeAddressWindow(0, 0, 240, 320);
+    writeAddressWindow(0, 0, height, width);
     dc_pin.write(.high);
 
     // Enable DMA out

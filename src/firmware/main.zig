@@ -2,6 +2,7 @@ const std = @import("std");
 const microzig = @import("microzig");
 const watchdog = @import("watchdog.zig");
 const Display = @import("display.zig");
+const Audio = @import("audio.zig");
 
 const peripherals = microzig.chip.peripherals;
 const drivers = microzig.drivers;
@@ -12,11 +13,24 @@ pub fn main() !void {
     speedUpCpu();
 
     watchdog.disableWatchdog();
-    watchdog.disableRtcWatchdog();
+    //watchdog.disableRtcWatchdog();
     watchdog.disableSuperWatchdog();
 
-    var display: Display = .{};
-    display.init();
+    var buffer: [1 << 18]u8 = undefined; // 262 KB heap
+    var stack = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = stack.allocator();
+
+    var display = Display.init(allocator) catch {
+        uart.write(0, "Could not allocate display.\n");
+        return;
+    };
+
+    const audio = Audio.init(allocator) catch {
+        uart.write(0, "Could not allocate audio.\n");
+        return;
+    };
+
+    _ = audio;
 
     var i: u32 = 0;
     while (true) {
