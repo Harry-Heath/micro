@@ -30,11 +30,11 @@ descriptors: [75]DmaDescriptor,
 pub const Sprite = struct {
     width: u16,
     height: u16,
-    pixels: []const u3,
+    pixels: []const u3, // row, then column
 
     pub fn getPixel(self: Sprite, x: usize, y: usize) u3 {
         if (x >= self.width or y >= self.height) return 0;
-        return self.pixels[x * self.height + y];
+        return self.pixels[x + y * self.width];
     }
 };
 
@@ -143,7 +143,7 @@ pub fn init(allocator: std.mem.Allocator) !*Self {
     writeCommand(.swreset, &.{});
     writeCommand(.slpout, &.{});
     writeCommand(.colmod, &.{0x55});
-    writeCommand(.madctl, &.{0x00});
+    writeCommand(.madctl, &.{0x40});
     writeCommand(.caset, &.{ 0x00, 0, 0, 240 });
     writeCommand(.raset, &.{ 0x00, 0, 320 >> 8, 320 & 0xFF });
     writeCommand(.invon, &.{});

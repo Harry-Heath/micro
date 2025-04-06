@@ -9,11 +9,39 @@ const drivers = microzig.drivers;
 const gpio = microzig.hal.gpio;
 const uart = microzig.hal.uart;
 
+const some_image = Display.Sprite{
+    .width = 16,
+    .height = 16,
+    .pixels = &.{
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    },
+};
+
+comptime {
+    std.debug.assert(some_image.pixels.len ==
+        (some_image.width * some_image.height));
+}
+
 pub fn main() !void {
     speedUpCpu();
 
     watchdog.disableWatchdog();
-    //watchdog.disableRtcWatchdog();
+    watchdog.disableRtcWatchdog();
     watchdog.disableSuperWatchdog();
 
     var buffer: [1 << 18]u8 = undefined; // 262 KB heap
@@ -40,6 +68,15 @@ pub fn main() !void {
                 display.setPixel(x, y, (x + i) / 32);
             }
         }
+
+        const radius = 50;
+        const time = @as(f32, @floatFromInt(i)) / 20.0;
+        const x_offset: i32 = @intFromFloat(radius * std.math.cos(time));
+        const y_offset: i32 = @intFromFloat(radius * std.math.sin(time));
+        const x_pos: u32 = @intCast(Display.width / 2 + x_offset);
+        const y_pos: u32 = @intCast(Display.height / 2 + y_offset);
+
+        display.drawSprite(some_image, x_pos, y_pos);
 
         display.update();
     }
