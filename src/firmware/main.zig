@@ -69,6 +69,8 @@ pub fn main() !void {
         display.drawSprite(some_image, x_pos, y_pos);
 
         display.update();
+
+        // audio.doSomething(0);
     }
 }
 

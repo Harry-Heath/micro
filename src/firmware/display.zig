@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const microzig = @import("microzig");
+const dma = @import("dma.zig");
 
 const peripherals = microzig.chip.peripherals;
 const gpio = microzig.hal.gpio;
@@ -10,9 +11,8 @@ const SPI2 = peripherals.SPI2;
 const SYSTEM = peripherals.SYSTEM;
 const DMA = peripherals.DMA;
 
-const dc_pin = gpio.instance.GPIO0;
-const rst_pin = gpio.instance.GPIO3;
-const bl_pin = gpio.instance.GPIO1;
+const dc_pin = gpio.instance.GPIO5;
+const rst_pin = gpio.instance.GPIO4;
 
 const output_pin_config = gpio.Pin.Config{
     .output_enable = true,
@@ -25,7 +25,7 @@ pub const colors = 8;
 const Self = @This();
 
 pixels: [width * height]Color = undefined,
-descriptors: [75]DmaDescriptor = undefined,
+descriptors: [75]dma.Descriptor = undefined,
 
 pub const Sprite = struct {
     width: u16,
@@ -113,28 +113,10 @@ const Command = enum(u8) {
     frctrl2 = 0xC6,
 };
 
-const DmaHeader = packed struct {
-    size: u12,
-    length: u12,
-    reserved0: u4 = undefined,
-    err_eof: u1 = 0,
-    reserved1: u1 = undefined,
-    suc_eof: u1 = 0,
-    owner: u1 = undefined,
-};
-
-const DmaDescriptor = packed struct {
-    header: DmaHeader,
-    buffer_address: u32,
-    next_address: u32,
-};
-
 pub fn init(self: *Self) void {
     dc_pin.apply(output_pin_config);
     rst_pin.apply(output_pin_config);
-    bl_pin.apply(output_pin_config);
 
-    bl_pin.write(.high);
     rst_pin.write(.high);
 
     initialiseDma();
