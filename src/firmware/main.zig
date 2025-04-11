@@ -4,6 +4,63 @@ const watchdog = @import("watchdog.zig");
 const Display = @import("display.zig");
 const Audio = @import("audio.zig");
 
+const SYSTIMER = peripherals.SYSTIMER;
+
+pub const microzig_options: microzig.Options = .{
+    .interrupts = .{
+        .interrupt1 = timer_interrupt,
+    },
+};
+
+fn timer_interrupt(_: *microzig.cpu.InterruptStack) linksection(".trap") callconv(.c) void {
+    // uart.write(0, if (audio.initialised) "!" else "?");
+    // audio.doSomething(0);
+    SYSTIMER.INT_CLR.modify(.{ .TARGET0_INT_CLR = 1 });
+}
+
+fn initInterrupts() void {
+    const SYSTEM = peripherals.SYSTEM;
+    SYSTEM.PERIP_CLK_EN0.modify(.{
+        .SYSTIMER_CLK_EN = 1,
+    });
+
+    SYSTEM.PERIP_RST_EN0.modify(.{
+        .SYSTIMER_RST = 0,
+    });
+
+    SYSTIMER.CONF.modify(.{
+        .TIMER_UNIT0_WORK_EN = 1,
+        .TIMER_UNIT0_CORE0_STALL_EN = 0,
+    });
+
+    SYSTIMER.TARGET0_CONF.modify(.{
+        .TARGET0_PERIOD = 20_000,
+        .TARGET0_PERIOD_MODE = 0,
+        .TARGET0_TIMER_UNIT_SEL = 0,
+    });
+
+    SYSTIMER.COMP0_LOAD.write(.{
+        .TIMER_COMP0_LOAD = 1,
+        .padding = 0,
+    });
+
+    SYSTIMER.TARGET0_CONF.modify(.{
+        .TARGET0_PERIOD_MODE = 1,
+    });
+
+    SYSTIMER.CONF.modify(.{ .TARGET0_WORK_EN = 1 });
+    SYSTIMER.INT_ENA.modify(.{ .TARGET0_INT_ENA = 1 });
+
+    microzig.cpu.interrupt.set_priority_threshold(.zero);
+
+    microzig.cpu.interrupt.set_type(.interrupt1, .level);
+    microzig.cpu.interrupt.set_priority(.interrupt1, .highest);
+    microzig.cpu.interrupt.map(.systimer_target0, .interrupt1);
+    microzig.cpu.interrupt.enable(.interrupt1);
+
+    microzig.cpu.interrupt.enable_interrupts();
+}
+
 const peripherals = microzig.chip.peripherals;
 const drivers = microzig.drivers;
 const gpio = microzig.hal.gpio;
@@ -37,8 +94,11 @@ comptime {
         (some_image.width * some_image.height));
 }
 
+// var audio: Audio = .{};
+
 pub fn main() !void {
     speedUpCpu();
+    initInterrupts();
 
     watchdog.disableWatchdog();
     watchdog.disableRtcWatchdog();
@@ -47,8 +107,7 @@ pub fn main() !void {
     var display: Display = .{};
     display.init();
 
-    var audio: Audio = .{};
-    audio.init();
+    // audio.init();
 
     var i: u32 = 0;
     while (true) {

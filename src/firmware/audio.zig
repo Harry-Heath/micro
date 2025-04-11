@@ -18,14 +18,15 @@ const Track = struct {
     volume: u8,
 };
 
-const clk_pin = gpio.instance.GPIO0;
-const din_pin = gpio.instance.GPIO1;
-const ws_pin = gpio.instance.GPIO3;
+const clk_pin = gpio.instance.GPIO1;
+const din_pin = gpio.instance.GPIO3;
+const ws_pin = gpio.instance.GPIO0;
 
 const output_pin_config = gpio.Pin.Config{
     .output_enable = true,
 };
 
+initialised: bool = false,
 up: bool = true,
 next_id: usize = 1,
 currently_playing: std.BoundedArray(Track, 64) = .{},
@@ -39,11 +40,12 @@ pub fn init(self: *Self) void {
 
     clk_pin.write(.low);
     ws_pin.write(.high);
-    _ = self;
+    self.initialised = true;
 }
 
 pub fn doSomething(self: *Self, byte: u8) void {
     _ = byte;
+    if (!self.initialised) return;
 
     self.up = !self.up;
 
@@ -53,14 +55,14 @@ pub fn doSomething(self: *Self, byte: u8) void {
 
     // microzig.core.experimental.debug.busy_sleep(100_000);
 
-    for (0..8) |_| {
+    for (0..24) |_| {
         clk_pin.write(.high);
         clk_pin.write(.low);
     }
 
     ws_pin.write(.high);
 
-    for (0..8) |_| {
+    for (0..24) |_| {
         clk_pin.write(.high);
         clk_pin.write(.low);
     }

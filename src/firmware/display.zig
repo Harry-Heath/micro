@@ -114,13 +114,13 @@ const Command = enum(u8) {
 };
 
 pub fn init(self: *Self) void {
+    initialiseDma();
+    initialiseSpi();
+
     dc_pin.apply(output_pin_config);
     rst_pin.apply(output_pin_config);
 
     rst_pin.write(.high);
-
-    initialiseDma();
-    initialiseSpi();
 
     writeCommand(.swreset, &.{});
     writeCommand(.slpout, &.{});
