@@ -26,6 +26,7 @@ const output_pin_config = gpio.Pin.Config{
     .output_enable = true,
 };
 
+up: bool = true,
 next_id: usize = 1,
 currently_playing: std.BoundedArray(Track, 64) = .{},
 descriptors: [32]dma.Descriptor = undefined,
@@ -42,37 +43,24 @@ pub fn init(self: *Self) void {
 }
 
 pub fn doSomething(self: *Self, byte: u8) void {
-    _ = self;
     _ = byte;
 
+    self.up = !self.up;
+
     // Low
-    din_pin.write(.low);
+    din_pin.write(if (self.up) .high else .low);
     ws_pin.write(.low);
 
-    for (0..24) |_| {
+    // microzig.core.experimental.debug.busy_sleep(100_000);
+
+    for (0..8) |_| {
         clk_pin.write(.high);
         clk_pin.write(.low);
     }
 
     ws_pin.write(.high);
 
-    for (0..24) |_| {
-        clk_pin.write(.high);
-        clk_pin.write(.low);
-    }
-
-    // High
-    din_pin.write(.high);
-    ws_pin.write(.low);
-
-    for (0..24) |_| {
-        clk_pin.write(.high);
-        clk_pin.write(.low);
-    }
-
-    ws_pin.write(.high);
-
-    for (0..24) |_| {
+    for (0..8) |_| {
         clk_pin.write(.high);
         clk_pin.write(.low);
     }
