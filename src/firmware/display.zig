@@ -22,10 +22,8 @@ pub const width = 320;
 pub const height = 240;
 pub const colors = 8;
 
-const Self = @This();
-
-pixels: [width * height]Color = undefined,
-descriptors: [75]dma.Descriptor = undefined,
+var pixels: [width * height]Color = undefined;
+var descriptors: [75]dma.Descriptor = undefined;
 
 pub const Sprite = struct {
     width: u16,
@@ -113,7 +111,7 @@ const Command = enum(u8) {
     frctrl2 = 0xC6,
 };
 
-pub fn init(self: *Self) void {
+pub fn init() void {
     initialiseDma();
     initialiseSpi();
 
@@ -134,28 +132,28 @@ pub fn init(self: *Self) void {
     writeCommand(.frctrl2, &.{0x0f});
 
     // Initialise display
-    for (&self.pixels) |*pixel| {
+    for (&pixels) |*pixel| {
         pixel.* = .black;
     }
-    self.setupDescriptors();
-    self.writeDisplay();
+    setupDescriptors();
+    writeDisplay();
 }
 
-pub fn setPixel(self: *Self, x: usize, y: usize, c: usize) void {
+pub fn setPixel(x: usize, y: usize, c: usize) void {
     if (x >= width or y >= height) return;
-    self.pixels[x * height + y] = Color.palette[c % colors];
+    pixels[x * height + y] = Color.palette[c % colors];
 }
 
-pub fn drawSprite(self: *Self, sprite: Sprite, tx: usize, ty: usize) void {
+pub fn drawSprite(sprite: Sprite, tx: usize, ty: usize) void {
     for (0..sprite.width) |px| {
         for (0..sprite.height) |py| {
-            self.setPixel(tx + px, ty + py, sprite.getPixel(px, py));
+            setPixel(tx + px, ty + py, sprite.getPixel(px, py));
         }
     }
 }
 
-pub fn update(self: *Self) void {
-    self.writeDisplay();
+pub fn update() void {
+    writeDisplay();
 }
 
 fn initialiseSpi() void {
@@ -192,14 +190,12 @@ fn initialiseSpi() void {
 }
 
 fn initialiseDma() void {
-    // Enable DMA peripheral
-    SYSTEM.PERIP_CLK_EN1.modify(.{
-        .DMA_CLK_EN = 1,
+    DMA.OUT_CONF0_CH0.modify(.{
+        .OUT_RST_CH0 = 1,
     });
 
-    // Reset DMA peripheral
-    SYSTEM.PERIP_RST_EN1.modify(.{
-        .DMA_RST = 0,
+    DMA.OUT_CONF0_CH0.modify(.{
+        .OUT_RST_CH0 = 0,
     });
 
     // Set output to SPI2
@@ -318,10 +314,9 @@ fn getBytesBigEndian(value: anytype) [@sizeOf(@TypeOf(value))]u8 {
 // So we need to submit 5 times
 // 4 * 32768 bytes (16 buffers), 1 * 22528 (11 buffers)
 
-fn setupDescriptors(self: *Self) void {
-    const descriptors = &self.descriptors;
-    const buffer = std.mem.asBytes(&self.pixels);
-    for (descriptors, 0..) |*descriptor, i| {
+fn setupDescriptors() void {
+    const buffer = std.mem.asBytes(&pixels);
+    for (&descriptors, 0..) |*descriptor, i| {
         const eof = (i % 16) == 15 or i == 74;
         const next_address = if (eof) 0 else @intFromPtr(&descriptors[i + 1]);
         descriptor.* = .{
@@ -335,9 +330,7 @@ fn setupDescriptors(self: *Self) void {
     }
 }
 
-fn writeDisplay(self: *Self) void {
-    const descriptors = &self.descriptors;
-
+fn writeDisplay() void {
     writeAddressWindow(0, 0, height, width);
     dc_pin.write(.high);
 
