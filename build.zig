@@ -41,7 +41,7 @@ fn addFirmwareStep(b: *Build) void {
         .optimize = .ReleaseFast,
         .root_source_file = b.path("src/firmware/main.zig"),
     });
-    addSounds(b, firmware);
+    addSounds(b, firmware) catch @panic("Failed to add sounds!");
     addImages(b, firmware);
     check.dependOn(&firmware.artifact.step);
 
@@ -131,17 +131,31 @@ fn addListenStep(b: *Build, pc: *Step) void {
     listen.dependOn(&run.step);
 }
 
-fn addSounds(b: *Build, firmware: *MicroBuild.Firmware) void {
-    var file = std.ArrayList(u8).init(b.allocator);
-    defer file.deinit();
+fn addSounds(b: *Build, firmware: *MicroBuild.Firmware) !void {
+    var sounds_file = std.ArrayList(u8).init(b.allocator);
+    defer sounds_file.deinit();
+    const writer = sounds_file.writer();
+
+    var iter_dir = try std.fs.cwd().openDir("sounds", .{
+        .iterate = true,
+        .access_sub_paths = false,
+    });
+    defer iter_dir.close();
 
     // Write sounds to file
-    const writer = file.writer();
-    writer.print("pub const asd = [_]u16{{0, 1, 2, 3, 4}};", .{}) catch @panic("OOM");
+    var iter = iter_dir.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind != .file) continue;
+
+        const period = std.mem.indexOf(u8, entry.name, ".") orelse entry.name.len;
+        const name = entry.name[0..period];
+        const data = [_]u8{ 255, 244, 23, 1, 2 };
+        try writer.print("pub const {s} = [_]u8{any};\n", .{ name, data });
+    }
 
     // Add file as an import
     const filename = "sounds";
-    const write_file = b.addWriteFile(filename ++ ".zig", file.items);
+    const write_file = b.addWriteFile(filename ++ ".zig", sounds_file.items);
     firmware.app_mod.addAnonymousImport(filename, .{
         .root_source_file = write_file.getDirectory().path(b, filename ++ ".zig"),
     });
@@ -153,7 +167,7 @@ fn addImages(b: *Build, firmware: *MicroBuild.Firmware) void {
 
     // Write sounds to file
     const writer = file.writer();
-    writer.print("pub const asd = [_]u16{{0, 1, 2, 3, 4}};", .{}) catch @panic("OOM");
+    writer.print("pub const asd = [_]u8{{0, 1, 2, 3, 4}};", .{}) catch @panic("OOM");
 
     // Add file as an import
     const filename = "images";

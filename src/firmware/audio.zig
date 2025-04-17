@@ -1,6 +1,7 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const dma = @import("dma.zig");
+const sounds = @import("sounds");
 
 const peripherals = microzig.chip.peripherals;
 const gpio = microzig.hal.gpio;
