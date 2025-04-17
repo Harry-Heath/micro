@@ -8,6 +8,10 @@ var optimize: std.builtin.OptimizeMode = undefined;
 var check: *Build.Step = undefined;
 var serial: *Build.Module = undefined;
 
+const MicroBuild = microzig.MicroBuild(.{
+    .esp = true,
+});
+
 const pc_dir: Build.Step.InstallArtifact.Options.Dir = .{
     .override = .{
         .custom = "pc",
@@ -28,9 +32,6 @@ pub fn build(b: *Build) void {
 fn addFirmwareStep(b: *Build) void {
 
     // Build firmware
-    const MicroBuild = microzig.MicroBuild(.{
-        .esp = true,
-    });
     const mz_dep = b.dependency("microzig", .{});
     const mb = MicroBuild.init(b, mz_dep) orelse return;
 
@@ -40,6 +41,8 @@ fn addFirmwareStep(b: *Build) void {
         .optimize = .ReleaseFast,
         .root_source_file = b.path("src/firmware/main.zig"),
     });
+    addSounds(b, firmware);
+    addImages(b, firmware);
     check.dependOn(&firmware.artifact.step);
 
     // Install firmware
@@ -61,17 +64,7 @@ fn addFlashStep(b: *Build, install: *Step) void {
 
 /// Flashes the firmware onto the ESP32
 fn doFlashStep(step: *Step, _: Step.MakeOptions) !void {
-
-    // Get args
-    const args = step.owner.args orelse {
-        std.debug.print(
-            "No port given! Use: zig build flash -- {{port}}\n",
-            .{},
-        );
-        return;
-    };
-
-    if (args.len < 1) {
+    if (step.owner.args == null or step.owner.args.?.len < 1) {
         std.debug.print(
             "No port given! Use: zig build flash -- {{port}}\n",
             .{},
@@ -79,6 +72,7 @@ fn doFlashStep(step: *Step, _: Step.MakeOptions) !void {
         return;
     }
 
+    const args = step.owner.args.?;
     var child = std.process.Child.init(&.{
         "python",
         "-m",
@@ -135,4 +129,46 @@ fn addListenStep(b: *Build, pc: *Step) void {
     }
     const listen = b.step("listen", "Listens to the esp32");
     listen.dependOn(&run.step);
+}
+
+fn addSounds(b: *Build, firmware: *MicroBuild.Firmware) void {
+    var file = std.ArrayList(u8).init(b.allocator);
+    defer file.deinit();
+
+    // Write sounds to file
+    const writer = file.writer();
+    writer.print("pub const asd = [_]u16{{0, 1, 2, 3, 4}};", .{}) catch @panic("OOM");
+
+    // Add file as an import
+    const filename = "sounds";
+    const write_file = b.addWriteFile(filename ++ ".zig", file.items);
+    firmware.app_mod.addAnonymousImport(filename, .{
+        .root_source_file = write_file.getDirectory().path(b, filename ++ ".zig"),
+    });
+}
+
+fn addImages(b: *Build, firmware: *MicroBuild.Firmware) void {
+    var file = std.ArrayList(u8).init(b.allocator);
+    defer file.deinit();
+
+    // Write sounds to file
+    const writer = file.writer();
+    writer.print("pub const asd = [_]u16{{0, 1, 2, 3, 4}};", .{}) catch @panic("OOM");
+
+    // Add file as an import
+    const filename = "images";
+    const write_file = b.addWriteFile(filename ++ ".zig", file.items);
+    firmware.app_mod.addAnonymousImport(filename, .{
+        .root_source_file = write_file.getDirectory().path(b, filename ++ ".zig"),
+    });
+}
+
+fn convertSound(filename: []const u8) []const u8 {
+    // TODO:
+    return filename;
+}
+
+fn convertImage(filename: []const u8) []const u8 {
+    // TODO:
+    return filename;
 }
