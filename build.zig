@@ -146,8 +146,8 @@ fn addSounds(b: *Build, firmware: *MicroBuild.Firmware) !void {
     var iter = iter_dir.iterate();
     while (try iter.next()) |entry| {
         if (entry.kind != .file) continue;
-
-        const period = std.mem.indexOf(u8, entry.name, ".") orelse entry.name.len;
+        const period = std.mem.indexOf(u8, entry.name, ".") orelse continue;
+        if (!std.mem.eql(u8, entry.name[period..], ".wav")) continue;
         const name = entry.name[0..period];
         const data = [_]u8{ 255, 244, 23, 1, 2 };
         try writer.print("pub const {s} = [_]u8{any};\n", .{ name, data });
