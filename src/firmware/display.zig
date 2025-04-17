@@ -196,6 +196,7 @@ fn initialiseDma() void {
 
     DMA.OUT_CONF0_CH0.modify(.{
         .OUT_RST_CH0 = 0,
+        .OUT_DATA_BURST_EN_CH0 = 1,
     });
 
     // Set output to SPI2
@@ -359,8 +360,6 @@ fn writeDisplay() void {
         });
 
         SPI2.DMA_CONF.modify(.{
-            .RX_AFIFO_RST = 1,
-            .BUF_AFIFO_RST = 1,
             .DMA_AFIFO_RST = 1,
         });
 
