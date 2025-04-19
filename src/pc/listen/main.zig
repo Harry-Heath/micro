@@ -1,3 +1,5 @@
+//! Allows listening to uart output
+
 const std = @import("std");
 const zig_serial = @import("serial");
 const os = @import("builtin").os;

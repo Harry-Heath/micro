@@ -2,6 +2,7 @@ const std = @import("std");
 const microzig = @import("microzig");
 const dma = @import("dma.zig");
 const sounds = @import("sounds");
+const images = @import("images");
 
 const peripherals = microzig.chip.peripherals;
 const gpio = microzig.hal.gpio;
@@ -41,6 +42,10 @@ pub fn init() void {
         //     b.* = if ((i % 1000) > 500) -0b0011 << 12 else 0;
         // }
     }
+
+    // for (0..@min(sound.len, sounds.deagle.audio.len)) |i| {
+    //     sound[i] = @as(i16, @intCast(sounds.deagle.audio[i])) << 8;
+    // }
 
     setupDescriptors();
     initialiseDma();
