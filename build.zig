@@ -75,6 +75,7 @@ fn initFirmwareStep(self: *Self) void {
     const firmware = mb.add_firmware(.{
         .name = "micro",
         .target = mb.ports.esp.chips.esp32_c3_direct_boot,
+        .linker_script = self.b.path("test.ld"),
         .optimize = .ReleaseFast,
         .root_source_file = self.b.path("src/firmware/main.zig"),
     });

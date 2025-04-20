@@ -7,6 +7,7 @@ const print = std.debug.print;
 const eql = std.mem.eql;
 const alloc = std.heap.page_allocator;
 
+// rebuild please
 pub fn main() void {
     run() catch |err| {
         switch (err) {
@@ -106,7 +107,7 @@ fn convertSound(path: []const u8, name: []const u8, writer: Writer) !void {
     }
 
     try writer.print(
-        "pub const {s}: Sound = .{{ .audio = &.{any} }};\n",
+        "pub const {s} = [_]i8{any};\n",
         .{ name, output },
     );
 }

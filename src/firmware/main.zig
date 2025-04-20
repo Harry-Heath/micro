@@ -4,6 +4,7 @@ const watchdog = @import("watchdog.zig");
 const audio = @import("audio.zig");
 const display = @import("display.zig");
 const sounds = @import("sounds");
+const assets = @import("assets");
 
 const SYSTIMER = peripherals.SYSTIMER;
 const SYSTEM = peripherals.SYSTEM;
@@ -47,7 +48,7 @@ comptime {
         (some_image.width * some_image.height));
 }
 
-pub fn main() !void {
+pub fn main() void {
     speedUpCpu();
     initialiseDma();
 
@@ -57,8 +58,11 @@ pub fn main() !void {
 
     audio.init();
     display.init();
+    const s: assets.Sound = .{
+        .audio = &sounds.song,
+    };
 
-    audio.play(sounds.deagle);
+    audio.play(s);
 
     var i: u32 = 0;
     while (true) {

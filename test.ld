@@ -1,0 +1,46 @@
+ENTRY(microzig_main);
+
+MEMORY
+{
+  flash0    (rx!w) : ORIGIN = 0x42000000, LENGTH = 0x00800000
+  ram0      (rw!x) : ORIGIN = 0x3FC80000, LENGTH = 1M
+}
+
+SECTIONS
+{
+  .text :
+  {
+     KEEP(*(microzig_flash_start))
+     KEEP(*(.trap))
+     *(.text*)
+  } > flash0
+
+  .rodata :
+  {
+     *(.rodata*)
+  } > flash0
+
+  .data :
+  {
+     microzig_data_start = .;
+     *(.sdata*)
+     *(.data*)
+     microzig_data_end = .;
+  } > ram0 AT> flash0
+
+  .bss (NOLOAD) :
+  {
+      microzig_bss_start = .;
+      *(.bss*)
+      *(.sbss*)
+      microzig_bss_end = .;
+  } > ram0
+
+  .flash_end :
+  {
+      PROVIDE(microzig_flash_end = .);
+  } > flash0
+
+  microzig_data_load_start = LOADADDR(.data);
+  PROVIDE(__global_pointer$ = microzig_data_start + 0x800);
+}
