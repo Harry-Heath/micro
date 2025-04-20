@@ -4,10 +4,6 @@
     .fingerprint = 0x6b3beeac06da1107, // Changing this has security and trust implications.
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
-        .microzig = .{
-            .url = "git+https://github.com/ZigEmbeddedGroup/microzig#354342c2aa31ceb8cb5a9e123662d73e6681438e",
-            .hash = "microzig-0.13.2-D20YSadoaQMkIy7PXJoTIIZUHlLoM1cPk0D9CH3w8ddV",
-        },
         .serial = .{
             .url = "git+https://github.com/ZigEmbeddedGroup/serial.git#ad338133eda8d86332718bbdc58c641a66307c84",
             .hash = "serial-0.0.1-PoeRzI20AABcp4FffI6HXKOL6LcGPKmeqfN4Bna4-YYm",
@@ -15,6 +11,10 @@
         .zigimg = .{
             .url = "git+https://github.com/zigimg/zigimg.git#df4f943cd0beebd744a9eded64e1df8820dfefea",
             .hash = "zigimg-0.1.0-AAAAAIXTEQDjPYRkwM2TTbsYvROTvfvOsbNB91gN1yOR",
+        },
+        .microzig = .{
+            .url = "git+https://github.com/ZigEmbeddedGroup/microzig.git#59046c0d8e4e9040e43684a42b66bcb925518938",
+            .hash = "microzig-0.14.0-D20YSebDaQNuqglHjiGBq7t6wzS45k-6G6tvi8DzMK3J",
         },
     },
     .paths = .{

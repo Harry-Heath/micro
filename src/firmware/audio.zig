@@ -73,7 +73,9 @@ fn run() void {
         track.time += 1;
 
         for (0..dur) |s| {
-            half[s] += @as(i16, track.sound.audio[s + start]) << 8;
+            var sample = @as(i16, track.sound.audio[s + start]) << 8;
+            sample = @divTrunc(sample, 3);
+            half[s] += sample;
         }
     }
 

@@ -43,6 +43,7 @@ pub fn build(b: *Build) void {
     self.addListenStep();
 }
 
+/// Creates asset generator executable module
 fn createAssetGenExe(b: *Build) *Step.Compile {
     const mod = b.createModule(.{
         .root_source_file = b.path("src/pc/asset_gen/main.zig"),
@@ -74,7 +75,7 @@ fn initFirmwareStep(self: *Self) void {
 
     const firmware = mb.add_firmware(.{
         .name = "micro",
-        .target = mb.ports.esp.chips.esp32_c3_direct_boot,
+        .target = mb.ports.esp.chips.esp32_c3,
         .optimize = .ReleaseFast,
         .root_source_file = self.b.path("src/firmware/main.zig"),
     });
@@ -126,11 +127,16 @@ fn doFlashStep(step: *Step, _: Step.MakeOptions) !void {
 
     const args = step.owner.args.?;
     var child = std.process.Child.init(&.{
-        "python",  "-m",
-        "esptool", "--port",
-        args[0],   "--baud",
-        "115200",  "write_flash",
-        "0x0",     "zig-out/firmware/micro.bin",
+        "python",        "-m",
+        "esptool",       "--port",
+        args[0],         "--baud",
+        "460800",        "--before",
+        "default_reset", "--after",
+        "hard_reset",    "write_flash",
+        "--flash_size",  "2MB",
+        "0x0",           "bin/bootloader.bin",
+        "0x8000",        "bin/partition-table.bin",
+        "0x10000",       "zig-out/firmware/micro.bin",
     }, step.owner.allocator);
 
     try child.spawn();
