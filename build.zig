@@ -133,6 +133,8 @@ fn doFlashStep(step: *Step, _: Step.MakeOptions) !void {
         "460800",        "--before",
         "default_reset", "--after",
         "hard_reset",    "write_flash",
+        "--flash_mode",  "dio",
+        "--flash_freq",  "80m",
         "--flash_size",  "2MB",
         "0x0",           "bin/bootloader.bin",
         "0x8000",        "bin/partition-table.bin",

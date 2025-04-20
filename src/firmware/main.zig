@@ -1,8 +1,8 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const watchdog = @import("watchdog.zig");
-const audio = @import("audio.zig");
 const display = @import("display.zig");
+const audio = @import("audio.zig");
 const sounds = @import("sounds");
 
 const SYSTIMER = peripherals.SYSTIMER;
@@ -47,18 +47,18 @@ comptime {
         (some_image.width * some_image.height));
 }
 
-pub fn main() !void {
-    speedUpCpu();
+pub fn main() void {
+    // speedUpCpu();
     initialiseDma();
 
     //watchdog.disableWatchdog();
     //watchdog.disableRtcWatchdog();
     //watchdog.disableSuperWatchdog();
 
-    audio.init();
     display.init();
+    audio.init();
 
-    audio.play(sounds.deagle);
+    audio.play(sounds.lordminor);
 
     var i: u32 = 0;
     while (true) {
