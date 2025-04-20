@@ -3,8 +3,10 @@ const microzig = @import("microzig");
 const watchdog = @import("watchdog.zig");
 const audio = @import("audio.zig");
 const display = @import("display.zig");
+const sounds = @import("sounds");
 
 const SYSTIMER = peripherals.SYSTIMER;
+const SYSTEM = peripherals.SYSTEM;
 
 pub const microzig_options: microzig.Options = .{
     .interrupts = .{
@@ -56,6 +58,8 @@ pub fn main() !void {
     audio.init();
     display.init();
 
+    audio.play(sounds.deagle);
+
     var i: u32 = 0;
     while (true) {
         i += 2;
@@ -79,8 +83,6 @@ pub fn main() !void {
         // audio.doSomething(0);
     }
 }
-
-const SYSTEM = peripherals.SYSTEM;
 
 fn speedUpCpu() void {
     // Set CPU speed to 160MHz

@@ -1,8 +1,8 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const dma = @import("dma.zig");
-const sounds = @import("sounds");
-const images = @import("images");
+const assets = @import("assets");
+const Sound = assets.Sound;
 
 const peripherals = microzig.chip.peripherals;
 const gpio = microzig.hal.gpio;
@@ -15,42 +15,69 @@ const GPIO = peripherals.GPIO;
 
 const sample_rate = 16_000;
 const buffer_duration = 0.25;
-const buffer_len = sample_rate * buffer_duration;
+const buffer_len: comptime_int = sample_rate * buffer_duration;
 const half_buffer_len = buffer_len / 2;
 const descriptor_len = 4000;
 const num_descriptors = buffer_len * @sizeOf(i16) / descriptor_len;
 
-var sound: [buffer_len]i16 = undefined;
+var sound_buf: [buffer_len]i16 = undefined;
 var halfs: [2]*[half_buffer_len]i16 = .{
-    sound[0..half_buffer_len],
-    sound[half_buffer_len..],
+    sound_buf[0..half_buffer_len],
+    sound_buf[half_buffer_len..],
 };
 var half_index: u1 = 0;
 var descriptors: [num_descriptors]dma.Descriptor = undefined;
 
+const Track = struct {
+    sound: Sound,
+    time: u16,
+};
+
+const Tracks = std.BoundedArray(Track, 8);
+var currently_playing = Tracks.init(0) catch unreachable;
+
 pub fn init() void {
-    for (&sound, 0..) |*b, i| {
-        b.* = @intFromFloat(10000.0 * @sin(@as(f32, @floatFromInt(i)) * 6.28318530718 / 200.0));
-
-        // if (i < 12000) {
-        //     b.* = if ((i % 1000) > 500) 0b0000 << 12 else 0;
-        // } else if (i < 24000) {
-        //     b.* = if ((i % 1000) > 500) 0b0001 << 12 else 0;
-        // } else if (i < 36000) {
-        //     b.* = if ((i % 1000) > 500) 0b0010 << 12 else 0;
-        // } else {
-        //     b.* = if ((i % 1000) > 500) -0b0011 << 12 else 0;
-        // }
-    }
-
-    // for (0..@min(sound.len, sounds.deagle.audio.len)) |i| {
-    //     sound[i] = @as(i16, @intCast(sounds.deagle.audio[i])) << 8;
-    // }
+    for (&sound_buf) |*b| b.* = 0;
 
     setupDescriptors();
     initialiseDma();
     initialiseI2s();
     initialiseInterrupts();
+}
+
+pub fn play(sound: Sound) void {
+    currently_playing.append(.{ .sound = sound, .time = 0 }) catch {};
+}
+
+fn run() void {
+    const half = halfs[half_index];
+    for (half) |*b| {
+        b.* = 0;
+    }
+
+    const initial_len = currently_playing.len;
+
+    for (0..initial_len) |i| {
+        const idx = (initial_len - 1) - i;
+
+        const track = &currently_playing.buffer[idx];
+        const track_len = track.sound.audio.len;
+        const start = @as(usize, track.time) * half_buffer_len;
+        var end = start + half_buffer_len;
+        if (end >= track_len) {
+            end = track_len;
+            _ = currently_playing.orderedRemove(i);
+        }
+
+        const dur = end - start;
+        track.time += 1;
+
+        for (0..dur) |s| {
+            half[s] += @as(i16, track.sound.audio[s + start]) << 8;
+        }
+    }
+
+    half_index +%= 1;
 }
 
 fn initialiseI2s() void {
@@ -116,7 +143,7 @@ fn initialiseI2s() void {
         .TX_CLK_SEL = 2,
         .TX_CLK_ACTIVE = 1,
         .CLK_EN = 1,
-        .TX_CLKM_DIV_NUM = 14,
+        .TX_CLKM_DIV_NUM = 44,
     });
 
     I2S.TX_CONF.modify(.{
@@ -159,7 +186,7 @@ fn initialiseDma() void {
 }
 
 fn setupDescriptors() void {
-    const buffer = std.mem.asBytes(&sound);
+    const buffer = std.mem.asBytes(&sound_buf);
     for (&descriptors, 0..) |*descriptor, i| {
         const last = descriptors.len - 1;
         const next_address = if (i == last)
@@ -194,13 +221,6 @@ fn initialiseInterrupts() void {
 const InterruptStack = microzig.cpu.InterruptStack;
 
 pub fn timerInterrupt(_: *InterruptStack) linksection(".trap") callconv(.c) void {
-
-    // Do stuff
-    microzig.hal.uart.write(0, if (half_index == 0) "0" else "1");
-    const half = halfs[half_index];
-    _ = half.len;
-
-    half_index +%= 1;
-
+    run();
     DMA.INT_CLR_CH1.modify(.{ .OUT_EOF_CH1_INT_CLR = 1 });
 }
