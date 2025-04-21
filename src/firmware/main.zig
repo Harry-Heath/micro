@@ -58,8 +58,6 @@ pub fn main() void {
     audio.init();
     display.init();
 
-    _ = assets.images.lil_fella;
-
     audio.play(assets.sounds.deagle);
 
     var i: u32 = 0;
