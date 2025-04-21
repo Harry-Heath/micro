@@ -3,7 +3,6 @@ const microzig = @import("microzig");
 const watchdog = @import("watchdog.zig");
 const audio = @import("audio.zig");
 const display = @import("display.zig");
-const sounds = @import("sounds");
 const assets = @import("assets");
 
 const SYSTIMER = peripherals.SYSTIMER;
@@ -58,11 +57,10 @@ pub fn main() void {
 
     audio.init();
     display.init();
-    const s: assets.Sound = .{
-        .audio = &sounds.song,
-    };
 
-    audio.play(s);
+    _ = assets.images.lil_fella;
+
+    audio.play(assets.sounds.deagle);
 
     var i: u32 = 0;
     while (true) {

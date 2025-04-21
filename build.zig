@@ -55,13 +55,6 @@ fn createAssetGenExe(b: *Build) *Step.Compile {
         .root_module = mod,
     });
 
-    const zigimg = b.dependency("zigimg", .{
-        .target = b.graph.host,
-        .optimize = .Debug,
-    });
-
-    exe.root_module.addImport("zigimg", zigimg.module("zigimg"));
-
     return exe;
 }
 
@@ -81,29 +74,25 @@ fn initFirmwareStep(self: *Self) void {
     });
     self.check_step.dependOn(&firmware.artifact.step);
 
-    const assets_module = self.b.createModule(.{
-        .root_source_file = self.b.path("src/shared/assets.zig"),
+    // Run asset gen
+    const asset_gen_run = self.b.addRunArtifact(self.asset_gen_exe);
+    _ = asset_gen_run.step.addDirectoryWatchInput(self.b.path("src/assets")) catch {};
+
+    asset_gen_run.addArg("src/assets");
+    const asset_gen_output = asset_gen_run.addOutputFileArg("assets.zig");
+
+    const assets_mod = self.b.createModule(.{
+        .root_source_file = asset_gen_output,
     });
 
-    firmware.app_mod.addImport("assets", assets_module);
+    const types_module = self.b.createModule(.{
+        .root_source_file = self.b.path("src/assets/types.zig"),
+    });
+    types_module.addImport("zigimg", self.b.dependency("zigimg", .{}).module("zigimg"));
+    assets_mod.addImport("asset_types", types_module);
 
-    // Run asset gen
-    inline for (&.{ "sounds", "images", "songs" }) |folder| {
-        const folder_path = "assets/" ++ folder;
-        const asset_gen_run = self.b.addRunArtifact(self.asset_gen_exe);
-        _ = asset_gen_run.step.addDirectoryWatchInput(self.b.path(folder_path)) catch {};
-
-        asset_gen_run.addArg(folder_path);
-        const asset_gen_output = asset_gen_run.addOutputFileArg(folder ++ ".zig");
-
-        const asset_gen_mod = self.b.createModule(.{
-            .root_source_file = asset_gen_output,
-        });
-        asset_gen_mod.addImport("assets", assets_module);
-
-        firmware.app_mod.addImport(folder, asset_gen_mod);
-        firmware.artifact.step.dependOn(&asset_gen_run.step);
-    }
+    firmware.app_mod.addImport("assets", assets_mod);
+    firmware.artifact.step.dependOn(&asset_gen_run.step);
 
     // Install firmware
     const install = mb.add_install_firmware(firmware, .{});

@@ -2,7 +2,7 @@ const std = @import("std");
 const microzig = @import("microzig");
 const dma = @import("dma.zig");
 const assets = @import("assets");
-const Sound = assets.Sound;
+const Sound = assets.types.Sound;
 
 const peripherals = microzig.chip.peripherals;
 const gpio = microzig.hal.gpio;
@@ -73,7 +73,7 @@ fn run() void {
         track.time += 1;
 
         for (0..dur) |s| {
-            half[s] += @as(i16, track.sound.audio[s + start]) << 8;
+            half[s] += @as(i16, track.sound.audio[s + start]) << 6;
         }
     }
 
