@@ -12,6 +12,7 @@ const SYSTIMER = peripherals.SYSTIMER;
 const I2S = peripherals.I2S;
 const DMA = peripherals.DMA;
 const GPIO = peripherals.GPIO;
+const IO_MUX = peripherals.IO_MUX;
 
 const sample_rate = 16_000;
 const buffer_duration = 0.25;
@@ -46,6 +47,7 @@ pub fn init() void {
 }
 
 pub fn play(sound: Sound) void {
+    // Need to make this interrupt safe
     currently_playing.append(.{ .sound = sound, .time = 0 }) catch {};
 }
 
@@ -66,7 +68,7 @@ fn run() void {
         var end = start + half_buffer_len;
         if (end >= track_len) {
             end = track_len;
-            _ = currently_playing.orderedRemove(i);
+            _ = currently_playing.orderedRemove(idx);
         }
 
         const dur = end - start;
@@ -76,7 +78,6 @@ fn run() void {
             half[s] += @as(i16, track.sound.audio[s + start]) << 6;
         }
     }
-
     half_index +%= 1;
 }
 
@@ -87,23 +88,23 @@ const output_pin_config = gpio.Pin.Config{
 fn initialiseI2s() void {
 
     // Setup pins
-    // I2SO_BCK_out -> 13
-    // I2SO_WS_out -> 14
-    // I2SO_SD_out -> 15
+    // GPIO21: I2SO_BCK_out -> 13
+    // GPIO3:  I2SO_WS_out  -> 14
+    // GPIO20: I2SO_SD_out  -> 15
 
-    // const audio_pins = [_]usize{ 9, 3, 8 };
-    // for (audio_pins) |audio_pin| {
-    //     IO_MUX.GPIO[spi_pin].modify(.{
-    //         .MCU_SEL = 2,
-    //     });
-    // }
+    const audio_pins = [_]usize{ 21, 9, 20 };
+    for (audio_pins) |audio_pin| {
+        // const pin: gpio.Pin = .{ .number = @intCast(audio_pin) };
+        // pin.apply(output_pin_config);
 
-    gpio.instance.GPIO9.apply(output_pin_config);
-    gpio.instance.GPIO3.apply(output_pin_config);
-    gpio.instance.GPIO8.apply(output_pin_config);
-    GPIO.FUNC_OUT_SEL_CFG[9].modify(.{ .OUT_SEL = 13, .OEN_SEL = 0 });
-    GPIO.FUNC_OUT_SEL_CFG[3].modify(.{ .OUT_SEL = 14, .OEN_SEL = 0 });
-    GPIO.FUNC_OUT_SEL_CFG[8].modify(.{ .OUT_SEL = 15, .OEN_SEL = 0 });
+        IO_MUX.GPIO[audio_pin].modify(.{
+            .MCU_SEL = 1,
+        });
+    }
+
+    GPIO.FUNC_OUT_SEL_CFG[21].modify(.{ .OUT_SEL = 13, .OEN_SEL = 0 });
+    GPIO.FUNC_OUT_SEL_CFG[9].modify(.{ .OUT_SEL = 14, .OEN_SEL = 0 });
+    GPIO.FUNC_OUT_SEL_CFG[20].modify(.{ .OUT_SEL = 15, .OEN_SEL = 0 });
 
     // Enable I2S
     SYSTEM.PERIP_CLK_EN0.modify(.{

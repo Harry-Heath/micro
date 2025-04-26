@@ -1,23 +1,23 @@
 const std = @import("std");
 const microzig = @import("microzig");
 const watchdog = @import("watchdog.zig");
+const cpu = @import("cpu.zig");
+const dma = @import("dma.zig");
 const audio = @import("audio.zig");
 const display = @import("display.zig");
+const input = @import("input.zig");
 const assets = @import("assets");
 
-const SYSTIMER = peripherals.SYSTIMER;
-const SYSTEM = peripherals.SYSTEM;
+const peripherals = microzig.chip.peripherals;
+const drivers = microzig.drivers;
+const gpio = microzig.hal.gpio;
+const uart = microzig.hal.uart;
 
 pub const microzig_options: microzig.Options = .{
     .interrupts = .{
         .interrupt1 = audio.timerInterrupt,
     },
 };
-
-const peripherals = microzig.chip.peripherals;
-const drivers = microzig.drivers;
-const gpio = microzig.hal.gpio;
-const uart = microzig.hal.uart;
 
 const some_image = display.Sprite{
     .width = 16,
@@ -48,20 +48,17 @@ comptime {
 }
 
 pub fn main() void {
-    speedUpCpu();
-    initialiseDma();
-
-    //watchdog.disableWatchdog();
-    //watchdog.disableRtcWatchdog();
-    //watchdog.disableSuperWatchdog();
-
+    cpu.init();
+    dma.init();
+    input.init();
     audio.init();
     display.init();
 
-    audio.play(assets.sounds.deagle);
+    audio.play(assets.sounds.song);
 
     var i: u32 = 0;
     while (true) {
+        input.poll();
         i += 2;
         for (0..display.width) |x| {
             for (0..display.height) |y| {
@@ -76,34 +73,16 @@ pub fn main() void {
         const x_pos: u32 = @intCast(display.width / 2 + x_offset);
         const y_pos: u32 = @intCast(display.height / 2 + y_offset);
 
-        display.drawSprite(some_image, x_pos, y_pos);
+        if (input.a() == .down) {
+            display.drawSprite(some_image, x_pos, y_pos);
+        }
+
+        if (input.b() == .clicked) {
+            audio.play(assets.sounds.deagle);
+        }
 
         display.update();
 
         // audio.doSomething(0);
     }
-}
-
-fn speedUpCpu() void {
-    // Set CPU speed to 160MHz
-    SYSTEM.SYSCLK_CONF.modify(.{
-        .PRE_DIV_CNT = 1,
-        .SOC_CLK_SEL = 1,
-    });
-    SYSTEM.CPU_PER_CONF.modify(.{
-        .PLL_FREQ_SEL = 0,
-        .CPUPERIOD_SEL = 1,
-    });
-}
-
-fn initialiseDma() void {
-    // Enable DMA peripheral
-    SYSTEM.PERIP_CLK_EN1.modify(.{
-        .DMA_CLK_EN = 1,
-    });
-
-    // Reset DMA peripheral
-    SYSTEM.PERIP_RST_EN1.modify(.{
-        .DMA_RST = 0,
-    });
 }

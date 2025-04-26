@@ -119,7 +119,7 @@ fn doFlashStep(step: *Step, _: Step.MakeOptions) !void {
         "python",  "-m",
         "esptool", "--port",
         args[0],   "--baud",
-        "115200",  "write_flash",
+        "921600",  "write_flash",
         "0x0",     "zig-out/firmware/micro.bin",
     }, step.owner.allocator);
 
