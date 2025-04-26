@@ -14,6 +14,12 @@ const ADC = peripherals.APB_SARADC;
 
 const a_pin = gpio.instance.GPIO19;
 const b_pin = gpio.instance.GPIO18;
+const x_axis = 0;
+const y_axis = 1;
+const x_offset = 2_800;
+const y_offset = 11_000;
+const x_flip = true;
+const y_flip = false;
 
 var x_value: i16 = 0;
 var y_value: i16 = 0;
@@ -21,6 +27,21 @@ var a_down: bool = false;
 var b_down: bool = false;
 var a_state: State = .up;
 var b_state: State = .up;
+
+pub const State = enum {
+    clicked,
+    down,
+    released,
+    up,
+
+    pub fn isDown(self: State) bool {
+        return self == .clicked or self == .down;
+    }
+
+    pub fn isUp(self: State) bool {
+        return self == .released or self == .up;
+    }
+};
 
 const input_pin_config = gpio.Pin.Config{
     .output_enable = false,
@@ -67,68 +88,12 @@ pub fn init() void {
     });
 }
 
-fn read(pin: gpio.Pin) bool {
-    return (peripherals.GPIO.IN.raw >> pin.number & 0x01) == 0x00;
-}
-
-fn pollButton(pin: gpio.Pin, down: *bool) State {
-    const new_down = read(pin);
-    const old_down = down.*;
-    down.* = new_down;
-
-    var state: State = .up;
-    if (new_down != old_down) {
-        state = if (new_down) .clicked else .released;
-    } else {
-        state = if (new_down) .down else .up;
-    }
-    return state;
-}
-
 pub fn poll() void {
     a_state = pollButton(a_pin, &a_down);
     b_state = pollButton(b_pin, &b_down);
-
-    const axes = [_]struct { comptime_int, *i16, comptime_int }{
-        .{ 1, &x_value, 11_000 },
-        .{ 0, &y_value, 2_800 },
-    };
-
-    inline for (axes) |axis| {
-        const index, const value_ptr, const offset = axis;
-        ADC.ONETIME_SAMPLE.modify(.{
-            .SARADC2_ONETIME_SAMPLE = 0,
-            .SARADC1_ONETIME_SAMPLE = 1,
-            .SARADC_ONETIME_CHANNEL = index,
-            .SARADC_ONETIME_ATTEN = 0,
-        });
-
-        ADC.ONETIME_SAMPLE.modify(.{ .SARADC_ONETIME_START = 1 });
-        while (ADC.INT_RAW.read().APB_SARADC1_DONE_INT_RAW == 0) {}
-
-        ADC.INT_CLR.modify(.{ .APB_SARADC1_DONE_INT_CLR = 1 });
-        ADC.ONETIME_SAMPLE.modify(.{ .SARADC_ONETIME_START = 0 });
-
-        const data: u16 = @truncate(ADC.SAR1DATA_STATUS.read().APB_SARADC1_DATA);
-        value_ptr.* = @intCast(data - offset);
-        value_ptr.* = -value_ptr.*;
-    }
+    x_value = pollAxis(x_axis, x_offset, x_flip);
+    y_value = pollAxis(y_axis, y_offset, y_flip);
 }
-
-pub const State = enum {
-    clicked,
-    down,
-    released,
-    up,
-
-    pub fn isDown(self: State) bool {
-        return self == .clicked or self == .down;
-    }
-
-    pub fn isUp(self: State) bool {
-        return self == .released or self == .up;
-    }
-};
 
 pub fn x() i16 {
     return x_value;
@@ -144,4 +109,40 @@ pub fn a() State {
 
 pub fn b() State {
     return b_state;
+}
+
+fn isPinDown(pin: gpio.Pin) bool {
+    return (peripherals.GPIO.IN.raw >> pin.number & 0x01) == 0x00;
+}
+
+fn pollButton(pin: gpio.Pin, prev_down: *bool) State {
+    const down = isPinDown(pin);
+    var state: State = .up;
+
+    if (down != prev_down.*)
+        state = if (down) .clicked else .released
+    else
+        state = if (down) .down else .up;
+
+    prev_down.* = down;
+    return state;
+}
+
+fn pollAxis(index: comptime_int, offset: comptime_int, flip: bool) i16 {
+    ADC.ONETIME_SAMPLE.modify(.{
+        .SARADC2_ONETIME_SAMPLE = 0,
+        .SARADC1_ONETIME_SAMPLE = 1,
+        .SARADC_ONETIME_CHANNEL = index,
+        .SARADC_ONETIME_ATTEN = 0,
+    });
+
+    ADC.ONETIME_SAMPLE.modify(.{ .SARADC_ONETIME_START = 1 });
+    while (ADC.INT_RAW.read().APB_SARADC1_DONE_INT_RAW == 0) {}
+
+    ADC.INT_CLR.modify(.{ .APB_SARADC1_DONE_INT_CLR = 1 });
+    ADC.ONETIME_SAMPLE.modify(.{ .SARADC_ONETIME_START = 0 });
+
+    const data: u16 = @truncate(ADC.SAR1DATA_STATUS.read().APB_SARADC1_DATA);
+    const value: i16 = @intCast(data - offset);
+    return if (flip) -value else value;
 }
