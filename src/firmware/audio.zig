@@ -80,15 +80,30 @@ fn run() void {
     half_index +%= 1;
 }
 
+const output_pin_config = gpio.Pin.Config{
+    .output_enable = true,
+};
+
 fn initialiseI2s() void {
 
     // Setup pins
     // I2SO_BCK_out -> 13
     // I2SO_WS_out -> 14
     // I2SO_SD_out -> 15
-    GPIO.FUNC_OUT_SEL_CFG[0].modify(.{ .OUT_SEL = 13, .OEN_SEL = 0 });
+
+    // const audio_pins = [_]usize{ 9, 3, 8 };
+    // for (audio_pins) |audio_pin| {
+    //     IO_MUX.GPIO[spi_pin].modify(.{
+    //         .MCU_SEL = 2,
+    //     });
+    // }
+
+    gpio.instance.GPIO9.apply(output_pin_config);
+    gpio.instance.GPIO3.apply(output_pin_config);
+    gpio.instance.GPIO8.apply(output_pin_config);
+    GPIO.FUNC_OUT_SEL_CFG[9].modify(.{ .OUT_SEL = 13, .OEN_SEL = 0 });
     GPIO.FUNC_OUT_SEL_CFG[3].modify(.{ .OUT_SEL = 14, .OEN_SEL = 0 });
-    GPIO.FUNC_OUT_SEL_CFG[1].modify(.{ .OUT_SEL = 15, .OEN_SEL = 0 });
+    GPIO.FUNC_OUT_SEL_CFG[8].modify(.{ .OUT_SEL = 15, .OEN_SEL = 0 });
 
     // Enable I2S
     SYSTEM.PERIP_CLK_EN0.modify(.{

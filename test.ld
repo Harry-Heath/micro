@@ -3,7 +3,7 @@ ENTRY(microzig_main);
 MEMORY
 {
   flash0    (rx!w) : ORIGIN = 0x42000000, LENGTH = 0x00800000
-  ram0      (rw!x) : ORIGIN = 0x3FC80000, LENGTH = 1M
+  ram0      (rw!x) : ORIGIN = 0x3FC80000, LENGTH = 313K
 }
 
 SECTIONS

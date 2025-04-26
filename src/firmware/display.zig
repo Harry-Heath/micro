@@ -111,6 +111,8 @@ const Command = enum(u8) {
     frctrl2 = 0xC6,
 };
 
+const sleep = microzig.core.experimental.debug.busy_sleep;
+
 pub fn init() void {
     initialiseDma();
     initialiseSpi();
@@ -120,16 +122,24 @@ pub fn init() void {
 
     rst_pin.write(.high);
 
-    writeCommand(.swreset, &.{});
-    writeCommand(.slpout, &.{});
-    writeCommand(.colmod, &.{0x55});
-    writeCommand(.madctl, &.{0x40});
-    writeCommand(.caset, &.{ 0x00, 0, 0, 240 });
-    writeCommand(.raset, &.{ 0x00, 0, 320 >> 8, 320 & 0xFF });
-    writeCommand(.invon, &.{});
-    writeCommand(.noron, &.{});
-    writeCommand(.dispon, &.{});
-    writeCommand(.frctrl2, &.{0x0f});
+    const startup_commands = [_]struct { Command, []const u8 }{
+        .{ .swreset, &.{} },
+        .{ .slpout, &.{} },
+        .{ .colmod, &.{0x55} },
+        .{ .madctl, &.{0x40} },
+        .{ .caset, &.{ 0x00, 0, 0, 240 } },
+        .{ .raset, &.{ 0x00, 0, 320 >> 8, 320 & 0xFF } },
+        .{ .invon, &.{} },
+        .{ .noron, &.{} },
+        .{ .dispon, &.{} },
+        .{ .frctrl2, &.{0x0f} },
+    };
+
+    inline for (&startup_commands) |startup_command| {
+        const cmd, const params = startup_command;
+        writeCommand(cmd, params);
+        sleep(1000);
+    }
 
     // Initialise display
     for (&pixels) |*pixel| {
