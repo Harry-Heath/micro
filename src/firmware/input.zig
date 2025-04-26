@@ -117,12 +117,10 @@ fn isPinDown(pin: gpio.Pin) bool {
 
 fn pollButton(pin: gpio.Pin, prev_down: *bool) State {
     const down = isPinDown(pin);
-    var state: State = .up;
+    var state: State = if (down) .down else .up;
 
     if (down != prev_down.*)
-        state = if (down) .clicked else .released
-    else
-        state = if (down) .down else .up;
+        state = if (state == .down) .clicked else .released;
 
     prev_down.* = down;
     return state;
