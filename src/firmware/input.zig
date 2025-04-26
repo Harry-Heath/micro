@@ -44,8 +44,6 @@ pub const State = enum {
 };
 
 const input_pin_config = gpio.Pin.Config{
-    .output_enable = false,
-    .pulldown_enable = false,
     .input_enable = true,
     .pullup_enable = true,
 };
@@ -53,39 +51,7 @@ const input_pin_config = gpio.Pin.Config{
 pub fn init() void {
     a_pin.apply(input_pin_config);
     b_pin.apply(input_pin_config);
-
-    const analong_pins = [_]u5{ 0, 1 };
-    for (analong_pins) |analog_pin| {
-        IO_MUX.GPIO[analog_pin].modify(.{
-            .MCU_SEL = 1,
-            .FUN_IE = 0,
-            .FUN_WPU = 0,
-            .FUN_WPD = 0,
-        });
-
-        GPIO.ENABLE_W1TC.modify(.{
-            .ENABLE_W1TC = @as(u26, 1) << analog_pin,
-        });
-    }
-
-    SYSTEM.PERIP_CLK_EN0.modify(.{
-        .APB_SARADC_CLK_EN = 1,
-    });
-    SYSTEM.PERIP_RST_EN0.modify(.{
-        .APB_SARADC_RST = 0,
-    });
-
-    ADC.CTRL.modify(.{
-        .SARADC_SAR_CLK_GATED = 1,
-        .SARADC_XPD_SAR_FORCE = 3,
-        // .SARADC_SAR_CLK_DIV = 46,
-    });
-
-    ADC.CLKM_CONF.modify(.{
-        .CLK_EN = 1,
-        .CLK_SEL = 1,
-        // .CLKM_DIV_NUM = 200,
-    });
+    initAdc();
 }
 
 pub fn poll() void {
@@ -111,12 +77,43 @@ pub fn b() State {
     return b_state;
 }
 
-fn isPinDown(pin: gpio.Pin) bool {
-    return (peripherals.GPIO.IN.raw >> pin.number & 0x01) == 0x00;
+fn initAdc() void {
+    const adc_pins = [_]u5{ 0, 1 };
+    for (adc_pins) |adc_pin| {
+        IO_MUX.GPIO[adc_pin].modify(.{
+            .MCU_SEL = 1,
+            .FUN_IE = 0,
+            .FUN_WPU = 0,
+            .FUN_WPD = 0,
+        });
+
+        GPIO.ENABLE_W1TC.modify(.{
+            .ENABLE_W1TC = @as(u26, 1) << adc_pin,
+        });
+    }
+
+    SYSTEM.PERIP_CLK_EN0.modify(.{
+        .APB_SARADC_CLK_EN = 1,
+    });
+    SYSTEM.PERIP_RST_EN0.modify(.{
+        .APB_SARADC_RST = 0,
+    });
+
+    ADC.CTRL.modify(.{
+        .SARADC_SAR_CLK_GATED = 1,
+        .SARADC_XPD_SAR_FORCE = 3,
+        // .SARADC_SAR_CLK_DIV = 46,
+    });
+
+    ADC.CLKM_CONF.modify(.{
+        .CLK_EN = 1,
+        .CLK_SEL = 1,
+        // .CLKM_DIV_NUM = 200,
+    });
 }
 
 fn pollButton(pin: gpio.Pin, prev_down: *bool) State {
-    const down = isPinDown(pin);
+    const down = (peripherals.GPIO.IN.raw >> pin.number & 0x01) == 0x00;
     var state: State = if (down) .down else .up;
 
     if (down != prev_down.*)
@@ -128,7 +125,6 @@ fn pollButton(pin: gpio.Pin, prev_down: *bool) State {
 
 fn pollAxis(index: comptime_int, offset: comptime_int, flip: bool) i16 {
     ADC.ONETIME_SAMPLE.modify(.{
-        .SARADC2_ONETIME_SAMPLE = 0,
         .SARADC1_ONETIME_SAMPLE = 1,
         .SARADC_ONETIME_CHANNEL = index,
         .SARADC_ONETIME_ATTEN = 0,
