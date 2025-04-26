@@ -54,11 +54,14 @@ pub fn main() void {
     audio.init();
     display.init();
 
-    audio.play(assets.sounds.song);
+    audio.play(assets.sounds.deagle);
 
     var i: u32 = 0;
     while (true) {
+
+        // Update inputs
         input.poll();
+
         i += 2;
         for (0..display.width) |x| {
             for (0..display.height) |y| {
@@ -66,14 +69,14 @@ pub fn main() void {
             }
         }
 
-        const radius = 50;
-        const time = @as(f32, @floatFromInt(i)) / 20.0;
-        const x_offset: i32 = @intFromFloat(radius * std.math.cos(time));
-        const y_offset: i32 = @intFromFloat(radius * std.math.sin(time));
+        // const radius = 50;
+        // const time = @as(f32, @floatFromInt(i)) / 20.0;
+        const x_offset: i32 = @divTrunc(input.x(), 25);
+        const y_offset: i32 = @divTrunc(input.y(), 25);
         const x_pos: u32 = @intCast(display.width / 2 + x_offset);
         const y_pos: u32 = @intCast(display.height / 2 + y_offset);
 
-        if (input.a() == .down) {
+        if (input.a().isUp()) {
             display.drawSprite(some_image, x_pos, y_pos);
         }
 

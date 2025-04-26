@@ -15,10 +15,10 @@ const GPIO = peripherals.GPIO;
 const IO_MUX = peripherals.IO_MUX;
 
 const sample_rate = 16_000;
-const buffer_duration = 0.25;
+const buffer_duration = 0.125;
 const buffer_len: comptime_int = sample_rate * buffer_duration;
 const half_buffer_len = buffer_len / 2;
-const descriptor_len = 4000;
+const descriptor_len = 2000;
 const num_descriptors = buffer_len * @sizeOf(i16) / descriptor_len;
 
 var sound_buf: [buffer_len]i16 = undefined;
@@ -47,7 +47,6 @@ pub fn init() void {
 }
 
 pub fn play(sound: Sound) void {
-    // Need to make this interrupt safe
     currently_playing.append(.{ .sound = sound, .time = 0 }) catch {};
 }
 
@@ -66,10 +65,7 @@ fn run() void {
         const track_len = track.sound.audio.len;
         const start = @as(usize, track.time) * half_buffer_len;
         var end = start + half_buffer_len;
-        if (end >= track_len) {
-            end = track_len;
-            _ = currently_playing.orderedRemove(idx);
-        }
+        if (end >= track_len) end = track_len;
 
         const dur = end - start;
         track.time += 1;
@@ -77,6 +73,8 @@ fn run() void {
         for (0..dur) |s| {
             half[s] += @as(i16, track.sound.audio[s + start]) << 6;
         }
+
+        if (end >= track_len) _ = currently_playing.orderedRemove(idx);
     }
     half_index +%= 1;
 }
